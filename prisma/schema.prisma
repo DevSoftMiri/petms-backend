@@ -1,0 +1,428 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  VET
+  GROOMER
+  RECEPTIONIST
+  PHARMACIST
+  STAFF
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+// ============================================================================
+// MODELS
+// ============================================================================
+
+/// Clinic model - represents a veterinary clinic
+model Clinic {
+  id                String    @id @default(cuid())
+  clinicName        String    @db.VarChar(255)
+  clinicCode        String    @unique @db.VarChar(50)
+  email             String    @unique @db.VarChar(255)
+  phoneNumber       String?   @db.VarChar(20)
+  address           String?   @db.Text
+  city              String?   @db.VarChar(100)
+  state             String?   @db.VarChar(100)
+  zipCode           String?   @db.VarChar(20)
+  country           String?   @db.VarChar(100)
+  licenseNumber     String?   @unique @db.VarChar(100)
+  subscriptionPlan  SubscriptionPlan @default(STARTER)
+  maxUsers          Int       @default(10)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  users             User[]
+  pets              Pet[]
+  customers         Customer[]
+  appointments      Appointment[]
+  groomingRecords   GroomingRecord[]
+  pharmacyRecords   PharmacyRecord[]
+  events            Event[]
+  labTests          LabTest[]
+  storeItems        StoreItem[]
+  supplies          Supply[]
+  transactions      Transaction[]
+
+  @@index([clinicCode])
+  @@index([email])
+  @@index([isActive])
+  @@map("clinics")
+}
+
+/// User model - represents system users (admin, staff, etc.)
+model User {
+  id                String    @id @default(cuid())
+  clinicId          String?   // Nullable for SUPERADMIN
+  username          String    @unique @db.VarChar(100)
+  email             String    @unique @db.VarChar(255)
+  password          String    @db.Text // Hashed password
+  firstName         String?   @db.VarChar(100)
+  lastName          String?   @db.VarChar(100)
+  phoneNumber       String?   @db.VarChar(20)
+  role              UserRole  @default(STAFF)
+  isActive          Boolean   @default(true)
+  lastLogin         DateTime?
+  refreshTokens     String[]  // Array of refresh tokens
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic?   @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  permissions       UserPermission[]
+  appointments      Appointment[]
+  groomingRecords   GroomingRecord[]
+  pharmacyRecords   PharmacyRecord[]
+
+  @@unique([clinicId, username]) // Username must be unique per clinic
+  @@index([clinicId])
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+/// Permission model - defines system permissions
+model Permission {
+  id                String    @id @default(cuid())
+  name              String    @unique @db.VarChar(100)
+  description       String?   @db.Text
+  category          String?   @db.VarChar(50) // e.g., CUSTOMER, PET, APPOINTMENT, etc.
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  users             UserPermission[]
+
+  @@index([category])
+  @@map("permissions")
+}
+
+/// UserPermission model - junction table for many-to-many between User and Permission
+model UserPermission {
+  id                String    @id @default(cuid())
+  userId            String
+  permissionId      String
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission        Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+  @@map("user_permissions")
+}
+
+/// Customer model - represents pet owners
+model Customer {
+  id                String    @id @default(cuid())
+  customerId        String    @unique @db.VarChar(50) // e.g., CUS-1001
+  code              String?   @db.VarChar(20) // e.g., HA210 (first 2 letters of name + last 3 digits of phone)
+  clinicId          String
+  firstName         String    @db.VarChar(100)
+  lastName          String    @db.VarChar(100)
+  email             String?   @db.VarChar(255)
+  phoneNumber       String?   @db.VarChar(20)
+  address           String?   @db.Text
+  city              String?   @db.VarChar(100)
+  state             String?   @db.VarChar(100)
+  zipCode           String?   @db.VarChar(20)
+  country           String?   @db.VarChar(100)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pets              Pet[]
+  appointments      Appointment[]
+
+  @@index([clinicId])
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([customerId])
+  @@index([code])
+  @@map("customers")
+}
+
+/// Pet model - represents pets owned by customers
+model Pet {
+  id                String    @id @default(cuid())
+  petId             String    @unique @db.VarChar(50) // e.g., PET-1001
+  clinicId          String
+  customerId        String
+  name              String    @db.VarChar(100)
+  species           String    @db.VarChar(50) // e.g., Dog, Cat, Bird, etc.
+  breed             String?   @db.VarChar(100)
+  age               Int?      // Age in months
+  gender            String?   @db.VarChar(20) // Male, Female, Unknown
+  weight            Float?    // Weight in kg
+  colour            String?   @db.VarChar(100) // Pet color/colour
+  medicalNotes      String?   @db.Text
+  microchipId       String?   @unique @db.VarChar(100)
+  dateOfBirth       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  owner             Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]
+  groomingRecords   GroomingRecord[]
+  pharmacyRecords   PharmacyRecord[]
+  labTests          LabTest[]  @relation("LabTests")
+
+  @@index([clinicId])
+  @@index([customerId])
+  @@index([species])
+  @@index([petId])
+  @@map("pets")
+}
+
+/// Appointment model - represents veterinary appointments
+model Appointment {
+  id                String    @id @default(cuid())
+  clinicId          String
+  petId             String
+  customerId        String
+  vetId             String
+  appointmentDate   DateTime
+  reason            String?   @db.Text
+  status            AppointmentStatus @default(PENDING)
+  notes             String?   @db.Text
+  diagnosis         String?   @db.Text
+  treatment         String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vet               User      @relation(fields: [vetId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId])
+  @@index([petId])
+  @@index([customerId])
+  @@index([vetId])
+  @@index([appointmentDate])
+  @@index([status])
+  @@map("appointments")
+}
+
+/// GroomingRecord model - represents pet grooming services
+model GroomingRecord {
+  id                String    @id @default(cuid())
+  clinicId          String
+  petId             String
+  groomerId         String
+  services          String    @db.Text // JSON array of services
+  notes             String?   @db.Text
+  cost              Float?
+  groomingDate      DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  groomer           User      @relation(fields: [groomerId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId])
+  @@index([petId])
+  @@index([groomerId])
+  @@index([groomingDate])
+  @@map("grooming_records")
+}
+
+/// PharmacyRecord model - represents pharmacy/medication records
+model PharmacyRecord {
+  id                String    @id @default(cuid())
+  clinicId          String
+  petId             String
+  pharmacistId      String
+  medicineName      String    @db.VarChar(255)
+  dosage            String    @db.VarChar(100)
+  quantity          Int?
+  duration          String?   @db.VarChar(100) // e.g., "10 days"
+  notes             String?   @db.Text
+  cost              Float?
+  prescribedDate    DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  pharmacist        User      @relation(fields: [pharmacistId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId])
+  @@index([petId])
+  @@index([pharmacistId])
+  @@index([prescribedDate])
+  @@map("pharmacy_records")
+}
+
+/// Event model - represents clinic events and schedules
+model Event {
+  id                String    @id @default(cuid())
+  clinicId          String
+  title             String    @db.VarChar(255)
+  description       String?   @db.Text
+  type              String?   @db.VarChar(100) // e.g., Meeting, Holiday, Training, etc.
+  date              DateTime
+  time              String?   @db.VarChar(20) // e.g., "10:30 AM"
+  location          String?   @db.VarChar(255)
+  attendees         Int?      @default(0)
+  status            String?   @db.VarChar(50) @default("Confirmed") // Confirmed, Pending, Cancelled
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([date])
+  @@index([status])
+  @@map("events")
+}
+
+/// LabTest model - represents laboratory tests
+model LabTest {
+  id                String    @id @default(cuid())
+  clinicId          String
+  petId             String?
+  petName           String?   @db.VarChar(255)
+  testType          String    @db.VarChar(255)
+  date              DateTime  @default(now())
+  result            String?   @db.Text
+  status            String?   @db.VarChar(50) @default("Complete") // Complete, Pending, Progress
+  veterinarian      String?   @db.VarChar(255)
+  notes             String?   @db.Text
+  reportUrl         String?   @db.Text // PDF report URL from Supabase
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pet               Pet?      @relation("LabTests", fields: [petId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId])
+  @@index([petId])
+  @@index([testType])
+  @@index([status])
+  @@map("lab_tests")
+}
+
+/// StoreItem model - represents pet store inventory
+model StoreItem {
+  id                String    @id @default(cuid())
+  clinicId          String
+  name              String    @db.VarChar(255)
+  category          String?   @db.VarChar(100) // e.g., Food, Toys, Accessories, etc.
+  description       String?   @db.Text
+  price             Float?
+  quantity          Int?      @default(0)
+  supplier          String?   @db.VarChar(255)
+  expiryDate        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([category])
+  @@index([name])
+  @@map("store_items")
+}
+
+/// Supply model - represents clinic supplies inventory
+model Supply {
+  id                String    @id @default(cuid())
+  clinicId          String
+  name              String    @db.VarChar(255)
+  category          String?   @db.VarChar(100) // e.g., Medical, Cleaning, Office, etc.
+  description       String?   @db.Text
+  quantity          Int?      @default(0)
+  reorderLevel      Int?      @default(10)
+  supplier          String?   @db.VarChar(255)
+  expiryDate        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([category])
+  @@index([name])
+  @@map("supplies")
+}
+
+/// Transaction model - represents financial transactions
+model Transaction {
+  id                String    @id @default(cuid())
+  clinicId          String
+  description       String    @db.Text
+  type              String    @db.VarChar(50) // Income or Expense
+  amount            Float
+  date              DateTime  @default(now())
+  paymentMethod     String?   @db.VarChar(100) // e.g., Cash, Card, Check, etc.
+  category          String?   @db.VarChar(100) // e.g., Salary, Medicine, Equipment, etc.
+  status            String?   @db.VarChar(50) @default("Completed") // Completed, Pending, Cancelled
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([type])
+  @@index([date])
+  @@index([status])
+  @@map("transactions")
+}

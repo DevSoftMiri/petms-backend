@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: petvms-backend
+    env: node
+    plan: standard
+    buildCommand: npm install && npm run build && npm run prisma:migrate:prod
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: petvms-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://pet-managment-frontend-112.onrender.com
+      - key: BACKEND_URL
+        value: https://pet-managment-backend.onrender.com
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+
+databases:
+  - name: petvms-db
+    plan: standard
+    region: singapore
+    databaseName: petvms
+    user: petvms_user
+    ipAllowList: []
