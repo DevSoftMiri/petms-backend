@@ -304,11 +304,13 @@ async function main() {
         ];
 
         for (const customerData of customers) {
-            await prisma.customer.create({
-                data: customerData,
+            await prisma.customer.upsert({
+                where: { customerId: customerData.customerId },
+                update: {},
+                create: customerData,
             });
         }
-        console.log(`✅ ${customers.length} customers created\n`);
+        console.log(`✅ ${customers.length} customers created/updated\n`);
 
         // ========================================================================
         // 10. Create Sample Pets
@@ -372,11 +374,13 @@ async function main() {
         ];
 
         for (const petData of pets) {
-            await prisma.pet.create({
-                data: petData,
+            await prisma.pet.upsert({
+                where: { petId: petData.petId },
+                update: {},
+                create: petData,
             });
         }
-        console.log(`✅ ${pets.length} pets created\n`);
+        console.log(`✅ ${pets.length} pets created/updated\n`);
 
         // ========================================================================
         // 11. Create Sample Appointments
