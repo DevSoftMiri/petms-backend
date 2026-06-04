@@ -36,6 +36,9 @@ const petValidators = {
     body('color')
       .optional()
       .trim(),
+    body('colour')
+      .optional()
+      .trim(),
     body('medicalNotes')
       .optional()
       .trim(),
@@ -49,7 +52,7 @@ const petValidators = {
   ],
 
   update: [
-    param('id').notEmpty().withMessage('Pet ID is required'),
+    param('petId').notEmpty().withMessage('Pet ID is required'),
     body('name')
       .optional()
       .trim()

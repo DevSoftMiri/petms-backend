@@ -50,14 +50,42 @@ class ClinicService {
     /**
      * Get clinic by ID
      */
-    static async getClinicById(clinicId) {
+    static async getClinicById(clinicId, user = null) {
         try {
+            if (user && user.role !== 'SUPERADMIN') {
+                const membership = await prisma.userClinic.findUnique({
+                    where: {
+                        userId_clinicId: {
+                            userId: user.id,
+                            clinicId,
+                        },
+                    },
+                });
+                const legacyClinicUser = membership
+                    ? null
+                    : await prisma.user.findFirst({
+                        where: { id: user.id, clinicId },
+                        select: { id: true },
+                    });
+
+                if (!membership && !legacyClinicUser) {
+                    throw new AppError('Access denied for this clinic', HTTP_STATUS.FORBIDDEN, 'CLINIC_ACCESS_DENIED');
+                }
+            }
+
             const clinic = await prisma.clinic.findUnique({
                 where: { id: clinicId },
                 include: {
                     users: {
                         where: { deletedAt: null }, // Only active users
                         select: { id: true, username: true, role: true, isActive: true }
+                    },
+                    userMemberships: {
+                        include: {
+                            user: {
+                                select: { id: true, username: true, role: true, isActive: true },
+                            },
+                        },
                     },
                     _count: {
                         select: {
@@ -193,6 +221,10 @@ class ClinicService {
                 await tx.user.updateMany({
                     where: { clinicId: clinicId },
                     data: { deletedAt: deletionDate },
+                });
+
+                await tx.userClinic.deleteMany({
+                    where: { clinicId: clinicId },
                 });
 
                 await tx.pet.updateMany({

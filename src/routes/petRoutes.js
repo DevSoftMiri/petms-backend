@@ -5,7 +5,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
 const permissionMiddleware = require('../middleware/permissionMiddleware');
 const clinicAccessMiddleware = require('../middleware/clinicAccessMiddleware');
-const petValidators = require('../validators/customerValidators'); // Reusing pet validators
+const petValidators = require('../validators/appointmentValidators');
 const { handleValidationErrors } = require('../validators/index');
 
 /**
@@ -62,6 +62,15 @@ router.delete(
     clinicAccessMiddleware,
     permissionMiddleware('DELETE_PETS'),
     PetController.delete
+);
+
+// PUT /api/v1/clinics/:clinicId/pets/:petId/assign-vet - Assign pet to a vet
+router.put(
+    '/:petId/assign-vet',
+    authMiddleware,
+    clinicAccessMiddleware,
+    roleMiddleware(['SUPERADMIN', 'ADMIN', 'VET']),
+    PetController.assignVet
 );
 
 module.exports = router;

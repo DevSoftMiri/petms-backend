@@ -478,6 +478,68 @@ async function main() {
         console.log(`✅ ${groomingRecords.length} grooming records created\n`);
 
         // ========================================================================
+        // 13. Create Sample Lab Tests
+        // ========================================================================
+        console.log('🧪 Creating sample lab tests...');
+        const allPharmacists = await prisma.user.findMany({
+            where: { role: 'PHARMACIST' },
+        });
+
+        const labTests = [
+            {
+                clinicId: clinic1.id,
+                petId: allPets[0].id, // Buddy
+                petName: allPets[0].name,
+                testType: 'Blood Test',
+                date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+                result: 'Normal',
+                status: 'Complete',
+                veterinarian: allVets[0].id,
+                notes: 'Complete blood count - all values within normal range',
+            },
+            {
+                clinicId: clinic1.id,
+                petId: allPets[1].id, // Whiskers
+                petName: allPets[1].name,
+                testType: 'Urinalysis',
+                date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+                result: 'Normal',
+                status: 'Complete',
+                veterinarian: allVets[0].id,
+                notes: 'Urine sample analysis - no abnormalities detected',
+            },
+            {
+                clinicId: clinic1.id,
+                petId: allPets[2].id, // Max
+                petName: allPets[2].name,
+                testType: 'X-Ray Report',
+                date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+                result: 'Normal',
+                status: 'Complete',
+                veterinarian: allVets[0].id,
+                notes: 'Chest X-ray - lungs clear, no respiratory issues',
+            },
+            {
+                clinicId: clinic2.id,
+                petId: allPets[3].id, // Luna
+                petName: allPets[3].name,
+                testType: 'Allergy Test',
+                date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+                result: 'Positive for chicken',
+                status: 'Complete',
+                veterinarian: allVets[1].id,
+                notes: 'Allergy panel shows sensitivity to chicken - recommend dietary change',
+            },
+        ];
+
+        for (const labTestData of labTests) {
+            await prisma.labTest.create({
+                data: labTestData,
+            });
+        }
+        console.log(`✅ ${labTests.length} lab tests created\n`);
+
+        // ========================================================================
         // Success Message
         // ========================================================================
         console.log('═══════════════════════════════════════════════════════');
@@ -495,7 +557,8 @@ async function main() {
         console.log(`   ✅ Customers: ${customers.length}`);
         console.log(`   ✅ Pets: ${pets.length}`);
         console.log(`   ✅ Appointments: ${appointments.length}`);
-        console.log(`   ✅ Grooming Records: ${groomingRecords.length}\n`);
+        console.log(`   ✅ Grooming Records: ${groomingRecords.length}`);
+        console.log(`   ✅ Lab Tests: ${labTests.length}\n`);
     } catch (error) {
         console.error('❌ Error during seed:', error);
         throw error;

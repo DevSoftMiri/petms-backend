@@ -40,7 +40,7 @@ class ClinicController {
             );
         }
 
-        const clinic = await ClinicService.getClinicById(req.params.id);
+        const clinic = await ClinicService.getClinicById(req.params.id, req.user);
 
         res.status(HTTP_STATUS.OK).json(
             apiResponse.success({

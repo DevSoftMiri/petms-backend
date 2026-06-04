@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
 class PharmacyController {
     /**
      * GET /api/v1/clinics/:clinicId/pharmacy
-     * Get all pharmacy records for a clinic
+     * Get all pharmacy inventory items for a clinic
      */
     static getAll = asyncHandler(async (req, res) => {
         const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE;
@@ -23,14 +23,14 @@ class PharmacyController {
                 result.pagination.page,
                 result.pagination.limit,
                 result.pagination.total,
-                'Pharmacy records retrieved successfully'
+                'Pharmacy inventory retrieved successfully'
             )
         );
     });
 
     /**
      * GET /api/v1/clinics/:clinicId/pharmacy/:recordId
-     * Get pharmacy record by ID
+     * Get pharmacy inventory item by ID
      */
     static getById = asyncHandler(async (req, res) => {
         const record = await PharmacyService.getPharmacyRecordById(req.params.clinicId, req.params.recordId);
@@ -38,14 +38,14 @@ class PharmacyController {
         res.status(HTTP_STATUS.OK).json(
             apiResponse.success({
                 data: record,
-                message: 'Pharmacy record retrieved successfully',
+                message: 'Medicine retrieved successfully',
             })
         );
     });
 
     /**
      * POST /api/v1/clinics/:clinicId/pharmacy
-     * Create new pharmacy record
+     * Create new pharmacy inventory item
      */
     static create = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
@@ -60,14 +60,14 @@ class PharmacyController {
         res.status(HTTP_STATUS.CREATED).json(
             apiResponse.success({
                 data: record,
-                message: 'Pharmacy record created successfully',
+                message: 'Medicine created successfully',
             })
         );
     });
 
     /**
      * PUT /api/v1/clinics/:clinicId/pharmacy/:recordId
-     * Update pharmacy record
+     * Update pharmacy inventory item
      */
     static update = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
@@ -82,14 +82,29 @@ class PharmacyController {
         res.status(HTTP_STATUS.OK).json(
             apiResponse.success({
                 data: record,
-                message: 'Pharmacy record updated successfully',
+                message: 'Medicine updated successfully',
+            })
+        );
+    });
+
+    /**
+     * PUT /api/v1/clinics/:clinicId/pharmacy/:recordId/stock
+     * Update medicine stock and pricing
+     */
+    static updateStock = asyncHandler(async (req, res) => {
+        const record = await PharmacyService.updateStock(req.params.clinicId, req.params.recordId, req.body);
+
+        res.status(HTTP_STATUS.OK).json(
+            apiResponse.success({
+                data: record,
+                message: 'Medicine stock updated successfully',
             })
         );
     });
 
     /**
      * DELETE /api/v1/clinics/:clinicId/pharmacy/:recordId
-     * Delete pharmacy record
+     * Delete pharmacy inventory item
      */
     static delete = asyncHandler(async (req, res) => {
         const result = await PharmacyService.deletePharmacyRecord(req.params.clinicId, req.params.recordId);

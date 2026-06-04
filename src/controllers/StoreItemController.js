@@ -5,7 +5,7 @@ class StoreItemController {
     async getStoreItemsByClinic(req, res) {
         try {
             const { clinicId } = req.params;
-            const items = await StoreItemService.getStoreItemsByClinic(clinicId);
+            const items = await StoreItemService.getStoreItemsByClinic(clinicId, req.query.search || "");
             return res.json(items);
         } catch (error) {
             console.error("Error fetching store items:", error);
@@ -21,7 +21,7 @@ class StoreItemController {
             return successResponse(res, 201, "Store item created successfully", item);
         } catch (error) {
             console.error("Error creating store item:", error);
-            return errorResponse(res, 500, "Failed to create store item", error);
+            return errorResponse(res, error.statusCode || 500, error.message || "Failed to create store item", error);
         }
     }
 
@@ -32,7 +32,18 @@ class StoreItemController {
             return successResponse(res, 200, "Store item updated successfully", item);
         } catch (error) {
             console.error("Error updating store item:", error);
-            return errorResponse(res, 500, "Failed to update store item", error);
+            return errorResponse(res, error.statusCode || 500, error.message || "Failed to update store item", error);
+        }
+    }
+
+    async updateQuantity(req, res) {
+        try {
+            const { clinicId, id } = req.params;
+            const item = await StoreItemService.updateQuantity(id, clinicId, req.body);
+            return successResponse(res, 200, "Store item quantity updated successfully", item);
+        } catch (error) {
+            console.error("Error updating store item quantity:", error);
+            return errorResponse(res, error.statusCode || 500, error.message || "Failed to update store item quantity", error);
         }
     }
 

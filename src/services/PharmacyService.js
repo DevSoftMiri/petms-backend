@@ -3,37 +3,90 @@ const { AppError } = require('../utils/errors');
 const { HTTP_STATUS, PAGINATION } = require('../utils/constants');
 const logger = require('../utils/logger');
 
+const MEDICINE_TYPES = ['Syrup', 'Ointment', 'Tablet', 'Injection', 'Drop'];
+
+const toNumber = (value, fallback = 0) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const toInteger = (value, fallback = 0) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const toDate = (value) => (value ? new Date(value) : null);
+
+const validateMedicine = (data) => {
+    if (!data.productName || !data.productName.trim()) {
+        throw new AppError('Product name is required', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR');
+    }
+
+    if (!data.type || !MEDICINE_TYPES.includes(data.type)) {
+        throw new AppError('Valid medicine type is required', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR');
+    }
+
+    const stock = toInteger(data.stock);
+    const mrp = toNumber(data.mrp);
+    const payable = toNumber(data.payable);
+
+    if (stock < 0) {
+        throw new AppError('Stock cannot be negative', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR');
+    }
+
+    if (payable > mrp) {
+        throw new AppError('Payable amount cannot exceed MRP', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR');
+    }
+
+    if (data.mfgDate && data.expDate && new Date(data.expDate) <= new Date(data.mfgDate)) {
+        throw new AppError('Expiry date must be greater than manufacturing date', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR');
+    }
+};
+
+const mapMedicineData = (data) => ({
+    productName: data.productName.trim(),
+    dosage: data.dosage || null,
+    power: data.power || null,
+    type: data.type,
+    weight: data.weight || null,
+    mfgDate: toDate(data.mfgDate),
+    expDate: toDate(data.expDate),
+    mrp: toNumber(data.mrp),
+    discount: toNumber(data.discount),
+    vendor: data.vendor || null,
+    payable: toNumber(data.payable),
+    stock: toInteger(data.stock),
+    inwardDate: toDate(data.inwardDate),
+});
+
 class PharmacyService {
-    /**
-     * Get all pharmacy records for a clinic
-     */
     static async getAllPharmacyRecords(clinicId, page = 1, limit = PAGINATION.DEFAULT_LIMIT, search = '') {
         try {
             const skip = (page - 1) * limit;
-
+            const searchQuery = search && search.trim();
             const where = {
                 clinicId,
                 deletedAt: null,
-                ...(search && {
+                ...(searchQuery && {
                     OR: [
-                        { medicineName: { contains: search, mode: 'insensitive' } },
-                        { pet: { name: { contains: search, mode: 'insensitive' } } },
+                        { productName: { contains: searchQuery, mode: 'insensitive' } },
+                        { dosage: { contains: searchQuery, mode: 'insensitive' } },
+                        { type: { contains: searchQuery, mode: 'insensitive' } },
+                        { vendor: { contains: searchQuery, mode: 'insensitive' } },
                     ],
                 }),
             };
 
             const [records, total] = await Promise.all([
-                prisma.pharmacyRecord.findMany({
+                prisma.pharmacyInventory.findMany({
                     where,
                     skip,
                     take: limit,
-                    include: {
-                        pet: true,
-                        pharmacist: { select: { firstName: true, lastName: true, username: true } },
-                    },
-                    orderBy: { prescribedDate: 'desc' },
+                    orderBy: { createdAt: 'desc' },
                 }),
-                prisma.pharmacyRecord.count({ where }),
+                prisma.pharmacyInventory.count({ where }),
             ]);
 
             return {
@@ -47,158 +100,113 @@ class PharmacyService {
             };
         } catch (error) {
             logger.error('Error in getAllPharmacyRecords:', error);
-            throw new AppError('Failed to fetch pharmacy records', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to fetch pharmacy inventory', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Get pharmacy record by ID
-     */
     static async getPharmacyRecordById(clinicId, recordId) {
         try {
-            const record = await prisma.pharmacyRecord.findUnique({
-                where: { id: recordId },
-                include: {
-                    pet: true,
-                    pharmacist: true,
-                },
+            const record = await prisma.pharmacyInventory.findFirst({
+                where: { id: recordId, clinicId, deletedAt: null },
             });
 
-            if (!record || record.clinicId !== clinicId) {
-                throw new AppError(
-                    'Pharmacy record not found',
-                    HTTP_STATUS.NOT_FOUND,
-                    'PHARMACY_RECORD_NOT_FOUND'
-                );
+            if (!record) {
+                throw new AppError('Medicine not found', HTTP_STATUS.NOT_FOUND, 'MEDICINE_NOT_FOUND');
             }
 
             return record;
         } catch (error) {
-            if (error instanceof AppError) {
-                throw error;
-            }
+            if (error instanceof AppError) throw error;
             logger.error('Error in getPharmacyRecordById:', error);
-            throw new AppError('Failed to fetch pharmacy record', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to fetch medicine', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Create pharmacy record
-     */
     static async createPharmacyRecord(clinicId, data) {
         try {
-            const [pet, pharmacist] = await Promise.all([
-                prisma.pet.findUnique({ where: { id: data.petId } }),
-                prisma.user.findUnique({ where: { id: data.pharmacistId } }),
-            ]);
+            validateMedicine(data);
 
-            if (!pet || pet.clinicId !== clinicId) {
-                throw new AppError('Pet not found', HTTP_STATUS.NOT_FOUND, 'PET_NOT_FOUND');
-            }
-
-            if (!pharmacist || pharmacist.clinicId !== clinicId || !['PHARMACIST', 'VET', 'ADMIN'].includes(pharmacist.role)) {
-                throw new AppError('Pharmacist not found', HTTP_STATUS.NOT_FOUND, 'PHARMACIST_NOT_FOUND');
-            }
-
-            const record = await prisma.pharmacyRecord.create({
+            const record = await prisma.pharmacyInventory.create({
                 data: {
                     clinicId,
-                    petId: data.petId,
-                    pharmacistId: data.pharmacistId,
-                    medicineName: data.medicineName,
-                    dosage: data.dosage,
-                    quantity: data.quantity,
-                    duration: data.duration,
-                    notes: data.notes,
-                    cost: data.cost,
-                    prescribedDate: data.prescribedDate || new Date(),
+                    ...mapMedicineData(data),
                 },
             });
 
-            logger.info(`Pharmacy record created: ${record.id}`);
-
+            logger.info(`Pharmacy inventory created: ${record.id}`);
             return record;
         } catch (error) {
-            if (error instanceof AppError) {
-                throw error;
-            }
+            if (error instanceof AppError) throw error;
             logger.error('Error in createPharmacyRecord:', error);
-            throw new AppError('Failed to create pharmacy record', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to create medicine', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Update pharmacy record
-     */
     static async updatePharmacyRecord(clinicId, recordId, data) {
         try {
-            const record = await prisma.pharmacyRecord.findUnique({
+            const existing = await this.getPharmacyRecordById(clinicId, recordId);
+            const merged = { ...existing, ...data };
+            validateMedicine(merged);
+
+            const record = await prisma.pharmacyInventory.update({
                 where: { id: recordId },
+                data: mapMedicineData(merged),
             });
 
-            if (!record || record.clinicId !== clinicId) {
-                throw new AppError(
-                    'Pharmacy record not found',
-                    HTTP_STATUS.NOT_FOUND,
-                    'PHARMACY_RECORD_NOT_FOUND'
-                );
-            }
-
-            const updatedRecord = await prisma.pharmacyRecord.update({
-                where: { id: recordId },
-                data: {
-                    medicineName: data.medicineName || record.medicineName,
-                    dosage: data.dosage || record.dosage,
-                    quantity: data.quantity !== undefined ? data.quantity : record.quantity,
-                    duration: data.duration || record.duration,
-                    notes: data.notes || record.notes,
-                    cost: data.cost !== undefined ? data.cost : record.cost,
-                },
-            });
-
-            logger.info(`Pharmacy record updated: ${recordId}`);
-
-            return updatedRecord;
+            logger.info(`Pharmacy inventory updated: ${recordId}`);
+            return record;
         } catch (error) {
-            if (error instanceof AppError) {
-                throw error;
-            }
+            if (error instanceof AppError) throw error;
             logger.error('Error in updatePharmacyRecord:', error);
-            throw new AppError('Failed to update pharmacy record', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to update medicine', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Delete pharmacy record
-     */
+    static async updateStock(clinicId, recordId, data) {
+        try {
+            const existing = await this.getPharmacyRecordById(clinicId, recordId);
+            const merged = {
+                ...existing,
+                stock: data.stock,
+                expDate: data.expDate !== undefined ? data.expDate : existing.expDate,
+                mrp: data.mrp !== undefined ? data.mrp : existing.mrp,
+                discount: data.discount !== undefined ? data.discount : existing.discount,
+                payable: data.payable !== undefined ? data.payable : existing.payable,
+            };
+            validateMedicine(merged);
+
+            return prisma.pharmacyInventory.update({
+                where: { id: recordId },
+                data: {
+                    stock: toInteger(merged.stock),
+                    expDate: toDate(merged.expDate),
+                    mrp: toNumber(merged.mrp),
+                    discount: toNumber(merged.discount),
+                    payable: toNumber(merged.payable),
+                },
+            });
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            logger.error('Error in updateStock:', error);
+            throw new AppError('Failed to update stock', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     static async deletePharmacyRecord(clinicId, recordId) {
         try {
-            const record = await prisma.pharmacyRecord.findUnique({
-                where: { id: recordId },
-            });
+            await this.getPharmacyRecordById(clinicId, recordId);
 
-            if (!record || record.clinicId !== clinicId) {
-                throw new AppError(
-                    'Pharmacy record not found',
-                    HTTP_STATUS.NOT_FOUND,
-                    'PHARMACY_RECORD_NOT_FOUND'
-                );
-            }
-
-            await prisma.pharmacyRecord.update({
+            await prisma.pharmacyInventory.update({
                 where: { id: recordId },
                 data: { deletedAt: new Date() },
             });
 
-            logger.info(`Pharmacy record deleted: ${recordId}`);
-
-            return { message: 'Pharmacy record deleted successfully' };
+            logger.info(`Pharmacy inventory deleted: ${recordId}`);
+            return { message: 'Medicine deleted successfully' };
         } catch (error) {
-            if (error instanceof AppError) {
-                throw error;
-            }
+            if (error instanceof AppError) throw error;
             logger.error('Error in deletePharmacyRecord:', error);
-            throw new AppError('Failed to delete pharmacy record', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to delete medicine', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 }

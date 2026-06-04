@@ -14,11 +14,12 @@ class UserController {
         const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE;
         const limit = Math.min(parseInt(req.query.limit) || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
         const search = req.query.search || '';
+        const role = req.query.role || null;
 
         // SUPERADMIN can see all users, others can see only their clinic users
         const clinicId = req.user.role === 'SUPERADMIN' ? req.query.clinicId : req.user.clinicId;
 
-        const result = await UserService.getAllUsers(clinicId, page, limit, search);
+        const result = await UserService.getAllUsers(clinicId, page, limit, search, role);
 
         res.status(HTTP_STATUS.OK).json(
             apiResponse.paginated(
@@ -55,17 +56,31 @@ class UserController {
 
     /**
      * POST /api/v1/users
+     * POST /api/v1/users
      * Create new user
      */
     static create = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(HTTP_STATUS.UNPROCESSABLE_ENTITY).json(
-                apiResponse.error('Validation failed', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR', errors.array())
-            );
+            // Format validation errors for frontend
+            const formattedErrors = errors.array().map((err) => ({
+                field: err.param,
+                message: err.msg,
+            }));
+
+            return res.status(HTTP_STATUS.UNPROCESSABLE_ENTITY).json({
+                success: false,
+                message: 'Validation failed',
+                code: 'VALIDATION_ERROR',
+                errors: formattedErrors,
+            });
         }
 
         const clinicId = req.user.role === 'SUPERADMIN' ? req.body.clinicId : req.user.clinicId;
+        if (req.user.role !== 'SUPERADMIN') {
+            req.body.clinicId = req.user.clinicId;
+            req.body.clinicIds = [req.user.clinicId];
+        }
         const user = await UserService.createUser(clinicId, req.body);
 
         res.status(HTTP_STATUS.CREATED).json(
@@ -83,12 +98,27 @@ class UserController {
     static update = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(HTTP_STATUS.UNPROCESSABLE_ENTITY).json(
-                apiResponse.error('Validation failed', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR', errors.array())
-            );
+            // Format validation errors for frontend
+            const formattedErrors = errors.array().map((err) => ({
+                field: err.param,
+                message: err.msg,
+            }));
+
+            return res.status(HTTP_STATUS.UNPROCESSABLE_ENTITY).json({
+                success: false,
+                message: 'Validation failed',
+                code: 'VALIDATION_ERROR',
+                errors: formattedErrors,
+            });
         }
 
-        const user = await UserService.updateUser(req.params.id, req.body);
+        const updateData = { ...req.body };
+        if (req.user.role !== 'SUPERADMIN') {
+            delete updateData.clinicId;
+            delete updateData.clinicIds;
+        }
+
+        const user = await UserService.updateUser(req.params.id, updateData);
 
         res.status(HTTP_STATUS.OK).json(
             apiResponse.success({

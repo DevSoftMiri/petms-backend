@@ -11,6 +11,15 @@ const userValidators = {
       .trim()
       .notEmpty()
       .withMessage('Clinic ID cannot be empty if provided'),
+    body('clinicIds')
+      .optional()
+      .isArray()
+      .withMessage('Clinic IDs must be an array'),
+    body('clinicIds.*')
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage('Clinic ID cannot be empty if provided'),
     validators.username(),
     validators.email(),
     validators.password(),
@@ -41,6 +50,15 @@ const userValidators = {
       .isEmail()
       .withMessage('Invalid email format'),
     body('clinicId')
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage('Clinic ID cannot be empty if provided'),
+    body('clinicIds')
+      .optional()
+      .isArray()
+      .withMessage('Clinic IDs must be an array'),
+    body('clinicIds.*')
       .optional()
       .trim()
       .notEmpty()

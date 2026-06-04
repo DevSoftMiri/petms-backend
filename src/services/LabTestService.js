@@ -24,11 +24,12 @@ class LabTestService {
                 orderBy: { date: "desc" },
             });
 
-            // Transform to include customerCode at top level
+            // Transform to include customerCode at top level and map id to _id
             return tests.map((test) => {
                 const owner = test.pet?.owner;
                 return {
                     ...test,
+                    _id: test.id,
                     customerCode: owner?.code || owner?.customerId || null,
                     customerName: owner
                         ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
@@ -43,6 +44,13 @@ class LabTestService {
 
     async createLabTest(testData) {
         try {
+            console.log('[LabTestService] Creating lab test with data:', {
+                clinicId: testData.clinicId,
+                petName: testData.petName,
+                testType: testData.testType,
+                reportUrl: testData.reportUrl
+            });
+
             const test = await prisma.labTest.create({
                 data: {
                     clinicId: testData.clinicId,
@@ -73,9 +81,12 @@ class LabTestService {
                 },
             });
 
+            console.log('[LabTestService] Created lab test with ID:', test.id, 'reportUrl:', test.reportUrl);
+
             const owner = test.pet?.owner;
             return {
                 ...test,
+                _id: test.id,
                 customerCode: owner?.code || owner?.customerId || null,
                 customerName: owner
                     ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
@@ -89,7 +100,9 @@ class LabTestService {
 
     async updateLabTest(id, clinicId, testData) {
         try {
-            const test = await prisma.labTest.updateMany({
+            console.log('[LabTestService] Updating lab test', id, 'with reportUrl:', testData.reportUrl);
+
+            await prisma.labTest.updateMany({
                 where: { id, clinicId },
                 data: {
                     petId: testData.petId,
@@ -104,7 +117,38 @@ class LabTestService {
                     updatedAt: new Date(),
                 },
             });
-            return test;
+
+            // Fetch the updated record to return the full object with all fields
+            const test = await prisma.labTest.findUnique({
+                where: { id },
+                include: {
+                    pet: {
+                        include: {
+                            owner: {
+                                select: {
+                                    id: true,
+                                    firstName: true,
+                                    lastName: true,
+                                    code: true,
+                                    customerId: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            console.log('[LabTestService] Updated lab test, returning:', { id: test?.id, reportUrl: test?.reportUrl });
+
+            const owner = test?.pet?.owner;
+            return {
+                ...test,
+                _id: test?.id,
+                customerCode: owner?.code || owner?.customerId || null,
+                customerName: owner
+                    ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
+                    : null,
+            };
         } catch (error) {
             console.error("Error in updateLabTest:", error);
             throw error;

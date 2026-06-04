@@ -46,6 +46,24 @@ class PetService {
                             },
                         },
                         clinic: { select: { id: true, clinicName: true } },
+                        assignedVet: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                            },
+                        },
+                        vetCases: {
+                            where: { deletedAt: null },
+                            select: {
+                                id: true,
+                                status: true,
+                                caseDate: true,
+                            },
+                            orderBy: { caseDate: 'desc' },
+                            take: 1,
+                        },
                     },
                     orderBy: { createdAt: 'desc' },
                 }),
@@ -317,6 +335,95 @@ class PetService {
             }
             logger.error('Error in getPetsByCustomer:', error);
             throw new AppError('Failed to fetch pets for customer', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Assign a pet to a veterinarian
+     */
+    static async assignVet(clinicId, petId, vetId) {
+        try {
+            logger.info(`[assignVet] Starting assignment - clinicId: ${clinicId}, petId: ${petId}, vetId: ${vetId}`);
+
+            // Find the pet
+            const pet = await prisma.pet.findFirst({
+                where: {
+                    OR: [
+                        { id: petId },
+                        { petId: petId },
+                    ],
+                },
+            });
+
+            logger.info(`[assignVet] Found pet:`, { id: pet?.id, status: pet?.status, assignedVetId: pet?.assignedVetId });
+
+            if (!pet || pet.clinicId !== clinicId) {
+                throw new AppError('Pet not found', HTTP_STATUS.NOT_FOUND, 'PET_NOT_FOUND');
+            }
+
+            // Verify the vet exists and belongs to the same clinic
+            const vet = await prisma.user.findFirst({
+                where: {
+                    id: vetId,
+                    clinicId: clinicId,
+                    role: 'VET',
+                },
+            });
+
+            if (!vet) {
+                throw new AppError('Veterinarian not found or does not belong to this clinic', HTTP_STATUS.NOT_FOUND, 'VET_NOT_FOUND');
+            }
+
+            logger.info(`[assignVet] Found vet: ${vet.firstName} ${vet.lastName} (${vet.id})`);
+
+            // Assign the vet to the pet and reset status if DISCHARGED
+            const updateData = {
+                assignedVetId: vetId,
+            };
+
+            if (pet.status === 'DISCHARGED') {
+                updateData.status = 'ACTIVE';
+                updateData.dischargeDate = null;
+                logger.info(`[assignVet] Resetting DISCHARGED pet to ACTIVE`);
+            }
+
+            const updatedPet = await prisma.pet.update({
+                where: { id: pet.id },
+                data: updateData,
+                include: {
+                    assignedVet: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            email: true,
+                        },
+                    },
+                    owner: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                        },
+                    },
+                },
+            });
+
+            logger.info(`[assignVet] Pet updated successfully:`, {
+                petId: updatedPet.id,
+                newStatus: updatedPet.status,
+                assignedVetId: updatedPet.assignedVetId,
+                assignedVetName: `${updatedPet.assignedVet?.firstName} ${updatedPet.assignedVet?.lastName}`
+            });
+
+            return updatedPet;
+        } catch (error) {
+            if (error instanceof AppError) {
+                logger.error(`[assignVet] AppError:`, error.message);
+                throw error;
+            }
+            logger.error(`[assignVet] Error:`, error);
+            throw new AppError('Failed to assign veterinarian to pet', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 }

@@ -28,7 +28,9 @@ class LabTestController {
     async updateLabTest(req, res) {
         try {
             const { clinicId, id } = req.params;
+            console.log('[LabTestController] updateLabTest called with body:', { reportUrl: req.body.reportUrl });
             const test = await LabTestService.updateLabTest(id, clinicId, req.body);
+            console.log('[LabTestController] updateLabTest returning:', { id: test?.id, reportUrl: test?.reportUrl });
             return successResponse(res, 200, "Lab test updated successfully", test);
         } catch (error) {
             console.error("Error updating lab test:", error);

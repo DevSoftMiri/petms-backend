@@ -5,6 +5,34 @@ const { HTTP_STATUS, ROLE_PERMISSIONS } = require('../utils/constants');
 const logger = require('../utils/logger');
 
 class AuthService {
+    static formatClinicMemberships(user) {
+        const memberships = user.clinicMemberships || [];
+
+        if (memberships.length > 0) {
+            return memberships.map((membership) => ({
+                id: membership.clinic.id,
+                clinicName: membership.clinic.clinicName,
+                clinicCode: membership.clinic.clinicCode,
+                email: membership.clinic.email,
+                role: membership.role,
+                isDefault: membership.isDefault,
+            }));
+        }
+
+        if (user.clinic) {
+            return [{
+                id: user.clinic.id,
+                clinicName: user.clinic.clinicName,
+                clinicCode: user.clinic.clinicCode,
+                email: user.clinic.email,
+                role: user.role,
+                isDefault: true,
+            }];
+        }
+
+        return [];
+    }
+
     /**
      * Signup - Create new user account
      */
@@ -44,6 +72,15 @@ class AuthService {
                     phoneNumber,
                     role,
                     clinicId: clinicId || null,
+                    ...(clinicId && {
+                        clinicMemberships: {
+                            create: {
+                                clinicId,
+                                role,
+                                isDefault: true,
+                            },
+                        },
+                    }),
                 },
             });
 
@@ -96,6 +133,13 @@ class AuthService {
                     ],
                     isActive: true,
                 },
+                include: {
+                    clinic: true,
+                    clinicMemberships: {
+                        include: { clinic: true },
+                        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                    },
+                },
             });
 
             if (!user) {
@@ -117,12 +161,16 @@ class AuthService {
                 );
             }
 
+            const clinics = AuthService.formatClinicMemberships(user);
+            const defaultClinic = clinics.find((clinic) => clinic.isDefault) || clinics[0] || null;
+
             // Generate tokens
             const payload = {
                 id: user.id,
                 username: user.username,
                 email: user.email,
-                clinicId: user.clinicId,
+                clinicId: defaultClinic?.id || user.clinicId,
+                clinicIds: clinics.map((clinic) => clinic.id),
                 role: user.role,
             };
 
@@ -150,7 +198,8 @@ class AuthService {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     role: user.role,
-                    clinicId: user.clinicId,
+                    clinicId: payload.clinicId,
+                    clinics,
                 },
                 accessToken,
                 refreshToken,
@@ -192,6 +241,13 @@ class AuthService {
         try {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
+                include: {
+                    clinic: true,
+                    clinicMemberships: {
+                        include: { clinic: true },
+                        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                    },
+                },
             });
 
             if (!user) {
@@ -202,11 +258,15 @@ class AuthService {
                 );
             }
 
+            const clinics = AuthService.formatClinicMemberships(user);
+            const defaultClinic = clinics.find((clinic) => clinic.isDefault) || clinics[0] || null;
+
             const payload = {
                 id: user.id,
                 username: user.username,
                 email: user.email,
-                clinicId: user.clinicId,
+                clinicId: defaultClinic?.id || user.clinicId,
+                clinicIds: clinics.map((clinic) => clinic.id),
                 role: user.role,
             };
 

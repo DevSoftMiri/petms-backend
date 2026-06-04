@@ -17,12 +17,16 @@ const petRoutes = require('./routes/petRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const groomingRoutes = require('./routes/groomingRoutes');
 const pharmacyRoutes = require('./routes/pharmacyRoutes');
+const pharmacyDeliveryRoutes = require('./routes/pharmacyDeliveryRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const laboratoryRoutes = require('./routes/laboratoryRoutes');
 const storeRoutes = require('./routes/storeRoutes');
+const storeDispensingRoutes = require('./routes/storeDispensingRoutes');
 const suppliesRoutes = require('./routes/suppliesRoutes');
 const financeRoutes = require('./routes/financeRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const vetRoutes = require('./routes/vetRoutes');
+const prescriptionRoutes = require('./routes/prescriptionRoutes');
 
 const app = express();
 
@@ -102,13 +106,19 @@ app.use(`${apiV1}/clinics/:clinicId/customers`, customerRoutes);
 app.use(`${apiV1}/clinics/:clinicId/pets`, petRoutes);
 app.use(`${apiV1}/clinics/:clinicId/appointments`, appointmentRoutes);
 app.use(`${apiV1}/clinics/:clinicId/grooming`, groomingRoutes);
+app.use(`${apiV1}/clinics/:clinicId/pharmacy/delivery`, pharmacyDeliveryRoutes);
 app.use(`${apiV1}/clinics/:clinicId/pharmacy`, pharmacyRoutes);
+app.use(`${apiV1}/clinics/:clinicId/prescriptions`, prescriptionRoutes);
 app.use(`${apiV1}/clinics/:clinicId/events`, eventRoutes);
 app.use(`${apiV1}/clinics/:clinicId/laboratory`, laboratoryRoutes);
+app.use(`${apiV1}/clinics/:clinicId/store/dispense`, storeDispensingRoutes);
 app.use(`${apiV1}/clinics/:clinicId/store`, storeRoutes);
 app.use(`${apiV1}/clinics/:clinicId/supplies`, suppliesRoutes);
 app.use(`${apiV1}/clinics/:clinicId/finance`, financeRoutes);
 app.use(`${apiV1}/clinics/:clinicId/dashboard`, dashboardRoutes);
+
+// Vet routes (for Vet Dashboard and Case Management)
+app.use(`${apiV1}/clinics/:clinicId/vet`, vetRoutes);
 
 // ============================================================================
 // Error Handling

@@ -24,7 +24,6 @@ router.get(
 router.get(
     '/:id',
     authMiddleware,
-    roleMiddleware(['SUPERADMIN']),
     clinicValidators.getById,
     handleValidationErrors,
     ClinicController.getById

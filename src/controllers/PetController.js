@@ -100,6 +100,29 @@ class PetController {
             })
         );
     });
+
+    /**
+     * PUT /api/v1/clinics/:clinicId/pets/:petId/assign-vet
+     * Assign a pet to a veterinarian
+     */
+    static assignVet = asyncHandler(async (req, res) => {
+        const { vetId } = req.body;
+
+        if (!vetId) {
+            return res.status(HTTP_STATUS.UNPROCESSABLE_ENTITY).json(
+                apiResponse.error('Veterinarian ID is required', HTTP_STATUS.UNPROCESSABLE_ENTITY, 'VALIDATION_ERROR')
+            );
+        }
+
+        const pet = await PetService.assignVet(req.params.clinicId, req.params.petId, vetId);
+
+        res.status(HTTP_STATUS.OK).json(
+            apiResponse.success({
+                data: pet,
+                message: 'Pet assigned to veterinarian successfully',
+            })
+        );
+    });
 }
 
 module.exports = PetController;

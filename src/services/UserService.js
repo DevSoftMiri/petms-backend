@@ -5,23 +5,65 @@ const { HTTP_STATUS, PAGINATION, ROLE_PERMISSIONS } = require('../utils/constant
 const logger = require('../utils/logger');
 
 class UserService {
+    static mapUserClinics(user) {
+        const memberships = user.clinicMemberships || [];
+        const clinics = memberships.map((membership) => ({
+            id: membership.clinic.id,
+            clinicName: membership.clinic.clinicName,
+            clinicCode: membership.clinic.clinicCode,
+            role: membership.role,
+            isDefault: membership.isDefault,
+        }));
+
+        return {
+            ...user,
+            clinics,
+            clinicIds: clinics.map((clinic) => clinic.id),
+        };
+    }
+
+    static normalizeClinicIds(data, fallbackClinicId = null) {
+        const ids = Array.isArray(data.clinicIds)
+            ? data.clinicIds
+            : (data.clinicId ? [data.clinicId] : []);
+
+        if (fallbackClinicId && ids.length === 0) {
+            ids.push(fallbackClinicId);
+        }
+
+        return [...new Set(ids.filter(Boolean))];
+    }
+
     /**
      * Get all users (with filtering)
      */
-    static async getAllUsers(clinicId, page = 1, limit = PAGINATION.DEFAULT_LIMIT, search = '') {
+    static async getAllUsers(clinicId, page = 1, limit = PAGINATION.DEFAULT_LIMIT, search = '', role = null) {
         try {
             const skip = (page - 1) * limit;
 
-            const where = {
-                clinicId,
-                ...(search && {
+            const filters = [];
+            if (clinicId) {
+                filters.push({
+                    OR: [
+                        { clinicId },
+                        { clinicMemberships: { some: { clinicId } } },
+                    ],
+                });
+            }
+            if (search) {
+                filters.push({
                     OR: [
                         { username: { contains: search, mode: 'insensitive' } },
                         { email: { contains: search, mode: 'insensitive' } },
                         { firstName: { contains: search, mode: 'insensitive' } },
                         { lastName: { contains: search, mode: 'insensitive' } },
                     ],
-                }),
+                });
+            }
+
+            const where = {
+                ...(role && { role }),
+                ...(filters.length > 0 && { AND: filters }),
             };
 
             const [users, total] = await Promise.all([
@@ -40,6 +82,19 @@ class UserService {
                         lastLogin: true,
                         createdAt: true,
                         clinicId: true,
+                        phoneNumber: true,
+                        clinicMemberships: {
+                            include: {
+                                clinic: {
+                                    select: {
+                                        id: true,
+                                        clinicName: true,
+                                        clinicCode: true,
+                                    },
+                                },
+                            },
+                            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                        },
                     },
                     orderBy: { createdAt: 'desc' },
                 }),
@@ -47,7 +102,7 @@ class UserService {
             ]);
 
             return {
-                users,
+                users: users.map((user) => UserService.mapUserClinics(user)),
                 pagination: {
                     page,
                     limit,
@@ -84,6 +139,18 @@ class UserService {
                     permissions: {
                         include: { permission: true },
                     },
+                    clinicMemberships: {
+                        include: {
+                            clinic: {
+                                select: {
+                                    id: true,
+                                    clinicName: true,
+                                    clinicCode: true,
+                                },
+                            },
+                        },
+                        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                    },
                 },
             });
 
@@ -92,7 +159,7 @@ class UserService {
             }
 
             return {
-                ...user,
+                ...UserService.mapUserClinics(user),
                 permissions: user.permissions.map((up) => up.permission.name),
             };
         } catch (error) {
@@ -109,6 +176,7 @@ class UserService {
      */
     static async createUser(clinicId, data) {
         try {
+            const clinicIds = UserService.normalizeClinicIds(data, clinicId);
             // Check if user already exists
             const existingUser = await prisma.user.findFirst({
                 where: {
@@ -130,7 +198,7 @@ class UserService {
             // Create user
             const user = await prisma.user.create({
                 data: {
-                    clinicId,
+                    clinicId: clinicIds[0] || null,
                     username: data.username,
                     email: data.email,
                     password: hashedPassword,
@@ -138,6 +206,15 @@ class UserService {
                     lastName: data.lastName,
                     phoneNumber: data.phoneNumber,
                     role: data.role || 'STAFF',
+                    ...(clinicIds.length > 0 && {
+                        clinicMemberships: {
+                            create: clinicIds.map((id, index) => ({
+                                clinicId: id,
+                                role: data.role || 'STAFF',
+                                isDefault: index === 0,
+                            })),
+                        },
+                    }),
                 },
             });
 
@@ -165,6 +242,8 @@ class UserService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
+                clinicId: user.clinicId,
+                clinicIds,
             };
         } catch (error) {
             if (error instanceof AppError) {
@@ -182,6 +261,15 @@ class UserService {
         try {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
+                include: {
+                    clinicMemberships: {
+                        select: {
+                            clinicId: true,
+                            isDefault: true,
+                        },
+                        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                    },
+                },
             });
 
             if (!user) {
@@ -197,7 +285,9 @@ class UserService {
                     phoneNumber: data.phoneNumber || user.phoneNumber,
                     role: data.role || user.role,
                     isActive: data.isActive !== undefined ? data.isActive : user.isActive,
-                    clinicId: data.clinicId || user.clinicId,   
+                    ...(data.clinicId !== undefined || data.clinicIds !== undefined
+                        ? { clinicId: UserService.normalizeClinicIds(data)[0] || null }
+                        : {}),
                 },
                 select: {
                     id: true,
@@ -207,13 +297,38 @@ class UserService {
                     lastName: true,
                     role: true,
                     isActive: true,
-                    clinicId: true, 
+                    clinicId: true,
                 },
             });
 
+            const membershipChanged = data.clinicId !== undefined || data.clinicIds !== undefined;
+
+            if (membershipChanged) {
+                const clinicIds = UserService.normalizeClinicIds(data, updatedUser.clinicId);
+                await prisma.$transaction(async (tx) => {
+                    await tx.userClinic.deleteMany({ where: { userId } });
+                    if (clinicIds.length > 0) {
+                        await tx.userClinic.createMany({
+                            data: clinicIds.map((id, index) => ({
+                                userId,
+                                clinicId: id,
+                                role: updatedUser.role,
+                                isDefault: index === 0,
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
+                });
+            } else if (data.role && user.clinicMemberships.length > 0) {
+                await prisma.userClinic.updateMany({
+                    where: { userId },
+                    data: { role: updatedUser.role },
+                });
+            }
+
             logger.info(`User updated: ${userId}`);
 
-            return updatedUser;
+            return UserService.getUserById(updatedUser.id);
         } catch (error) {
             if (error instanceof AppError) {
                 throw error;

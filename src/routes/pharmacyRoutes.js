@@ -39,6 +39,15 @@ router.post(
     PharmacyController.create
 );
 
+// PUT /api/v1/clinics/:clinicId/pharmacy/:recordId/stock
+router.put(
+    '/:recordId/stock',
+    authMiddleware,
+    clinicAccessMiddleware,
+    permissionMiddleware('MANAGE_PHARMACY'),
+    PharmacyController.updateStock
+);
+
 // PUT /api/v1/clinics/:clinicId/pharmacy/:recordId
 router.put(
     '/:recordId',

@@ -90,18 +90,33 @@ class AppointmentService {
      */
     static async createAppointment(clinicId, data) {
         try {
-            // Verify pet and customer belong to clinic
-            const [pet, vet] = await Promise.all([
+            // Verify all required fields
+            if (!data.petId || !data.customerId || !data.vetId || !data.appointmentDate) {
+                throw new AppError(
+                    'Missing required fields: petId, customerId, vetId, appointmentDate',
+                    HTTP_STATUS.UNPROCESSABLE_ENTITY,
+                    'MISSING_FIELDS'
+                );
+            }
+
+            // Verify pet, customer, and vet belong to clinic
+            const [pet, customer, vet] = await Promise.all([
                 prisma.pet.findUnique({ where: { id: data.petId } }),
+                prisma.customer.findUnique({ where: { id: data.customerId } }),
                 prisma.user.findUnique({ where: { id: data.vetId } }),
             ]);
 
             if (!pet || pet.clinicId !== clinicId) {
-                throw new AppError('Pet not found', HTTP_STATUS.NOT_FOUND, 'PET_NOT_FOUND');
+                throw new AppError('Pet not found in this clinic', HTTP_STATUS.NOT_FOUND, 'PET_NOT_FOUND');
             }
 
-            if (!vet || vet.clinicId !== clinicId || !['VET', 'ADMIN'].includes(vet.role)) {
-                throw new AppError('Vet not found', HTTP_STATUS.NOT_FOUND, 'VET_NOT_FOUND');
+            if (!customer || customer.clinicId !== clinicId) {
+                throw new AppError('Customer not found in this clinic', HTTP_STATUS.NOT_FOUND, 'CUSTOMER_NOT_FOUND');
+            }
+
+            // Allow VET, ADMIN, and SUPERADMIN roles to create appointments
+            if (!vet || vet.clinicId !== clinicId || !['VET', 'ADMIN', 'SUPERADMIN'].includes(vet.role)) {
+                throw new AppError('Vet not found or invalid role in this clinic', HTTP_STATUS.NOT_FOUND, 'VET_NOT_FOUND');
             }
 
             const appointment = await prisma.appointment.create({
@@ -110,8 +125,8 @@ class AppointmentService {
                     petId: data.petId,
                     customerId: data.customerId,
                     vetId: data.vetId,
-                    appointmentDate: data.appointmentDate,
-                    reason: data.reason,
+                    appointmentDate: new Date(data.appointmentDate),
+                    reason: data.reason || 'Appointment',
                     status: APPOINTMENT_STATUS.PENDING,
                     notes: data.notes,
                 },
@@ -125,7 +140,7 @@ class AppointmentService {
                 throw error;
             }
             logger.error('Error in createAppointment:', error);
-            throw new AppError('Failed to create appointment', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new AppError('Failed to create appointment: ' + (error.message || 'Unknown error'), HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
     }
 

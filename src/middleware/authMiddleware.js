@@ -27,6 +27,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
         req.user = {
             id: decoded.id,
             clinicId: decoded.clinicId,
+            clinicIds: decoded.clinicIds || (decoded.clinicId ? [decoded.clinicId] : []),
             role: decoded.role,
             email: decoded.email,
             username: decoded.username,

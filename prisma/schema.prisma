@@ -22,6 +22,7 @@ enum UserRole {
   RECEPTIONIST
   PHARMACIST
   STAFF
+  USER
 }
 
 enum AppointmentStatus {
@@ -63,16 +64,21 @@ model Clinic {
 
   // Relations
   users             User[]
+  userMemberships   UserClinic[]
   pets              Pet[]
   customers         Customer[]
   appointments      Appointment[]
   groomingRecords   GroomingRecord[]
   pharmacyRecords   PharmacyRecord[]
+  pharmacyInventory PharmacyInventory[]
   events            Event[]
   labTests          LabTest[]
   storeItems        StoreItem[]
   supplies          Supply[]
   transactions      Transaction[]
+  vetCases          VetCase[]
+  pharmacyDeliveries PharmacyDelivery[]
+  storeDispensingRecords StoreDispensing[]
 
   @@index([clinicCode])
   @@index([email])
@@ -100,10 +106,15 @@ model User {
 
   // Relations
   clinic            Clinic?   @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  clinicMemberships UserClinic[]
   permissions       UserPermission[]
   appointments      Appointment[]
   groomingRecords   GroomingRecord[]
   pharmacyRecords   PharmacyRecord[]
+  vetCases          VetCase[]
+  assignedPets      Pet[]     @relation("AssignedVetPets")
+  pharmacyDeliveries PharmacyDelivery[] @relation("PharmacyDeliveries")
+  storeDispensingRecords StoreDispensing[] @relation("StoreDispensingRecords")
 
   @@unique([clinicId, username]) // Username must be unique per clinic
   @@index([clinicId])
@@ -111,6 +122,26 @@ model User {
   @@index([role])
   @@index([isActive])
   @@map("users")
+}
+
+/// UserClinic model - assigns one user to one or more clinics
+model UserClinic {
+  id                String    @id @default(cuid())
+  userId            String
+  clinicId          String
+  role              UserRole
+  isDefault         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clinicId])
+  @@index([userId])
+  @@index([clinicId])
+  @@map("user_clinics")
 }
 
 /// Permission model - defines system permissions
@@ -169,6 +200,8 @@ model Customer {
   clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   pets              Pet[]
   appointments      Appointment[]
+  pharmacyDeliveries PharmacyDelivery[]
+  storeDispensingRecords StoreDispensing[]
 
   @@index([clinicId])
   @@index([email])
@@ -191,20 +224,29 @@ model Pet {
   gender            String?   @db.VarChar(20) // Male, Female, Unknown
   weight            Float?    // Weight in kg
   colour            String?   @db.VarChar(100) // Pet color/colour
+  bloodGroup        String?   @db.VarChar(20) // Blood group (e.g., DEA 1.1+, DEA 1.1-, etc. for dogs; A, B, AB for cats)
   medicalNotes      String?   @db.Text
   microchipId       String?   @unique @db.VarChar(100)
   dateOfBirth       DateTime?
+  assignedVetId     String?   // Currently assigned vet
+  status            String?   @default("AVAILABLE") @db.VarChar(20)  // AVAILABLE, ADMITTED, DISCHARGED
+  admissionDate    DateTime?
+  dischargeDate    DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
   // Relations
+  assignedVet      User?     @relation("AssignedVetPets", fields: [assignedVetId], references: [id], onDelete: SetNull)
   clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   owner             Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   appointments      Appointment[]
   groomingRecords   GroomingRecord[]
   pharmacyRecords   PharmacyRecord[]
   labTests          LabTest[]  @relation("LabTests")
+  vetCases          VetCase[]
+  pharmacyDeliveries PharmacyDelivery[]
+  storeDispensingRecords StoreDispensing[]
 
   @@index([clinicId])
   @@index([customerId])
@@ -235,6 +277,7 @@ model Appointment {
   pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
   customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   vet               User      @relation(fields: [vetId], references: [id], onDelete: Restrict)
+  vetCases          VetCase[]
 
   @@index([clinicId])
   @@index([petId])
@@ -298,6 +341,37 @@ model PharmacyRecord {
   @@index([pharmacistId])
   @@index([prescribedDate])
   @@map("pharmacy_records")
+}
+
+/// PharmacyInventory model - represents medicine inventory stock
+model PharmacyInventory {
+  id                String    @id @default(cuid())
+  clinicId          String
+  productName       String    @db.VarChar(255)
+  dosage            String?   @db.VarChar(100)
+  power             String?   @db.VarChar(100)
+  type              String    @db.VarChar(50)
+  weight            String?   @db.VarChar(100)
+  mfgDate           DateTime?
+  expDate           DateTime?
+  mrp               Float?    @default(0)
+  discount          Float?    @default(0)
+  vendor            String?   @db.VarChar(255)
+  payable           Float?    @default(0)
+  stock             Int?      @default(0)
+  inwardDate        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pharmacyDeliveries PharmacyDelivery[]
+
+  @@index([clinicId])
+  @@index([productName])
+  @@index([type])
+  @@index([vendor])
+  @@map("pharmacy_inventory")
 }
 
 /// Event model - represents clinic events and schedules
@@ -364,12 +438,15 @@ model StoreItem {
   quantity          Int?      @default(0)
   supplier          String?   @db.VarChar(255)
   expiryDate        DateTime?
+  inwardDate        DateTime?
+  outwardDate       DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
   // Relations
   clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  storeDispensingRecords StoreDispensing[]
 
   @@index([clinicId])
   @@index([category])
@@ -386,6 +463,7 @@ model Supply {
   description       String?   @db.Text
   quantity          Int?      @default(0)
   reorderLevel      Int?      @default(10)
+  cost              Float?    @default(0) // Unit price/cost
   supplier          String?   @db.VarChar(255)
   expiryDate        DateTime?
   createdAt         DateTime  @default(now())
@@ -394,6 +472,7 @@ model Supply {
 
   // Relations
   clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pharmacyDeliveries PharmacyDelivery[]
 
   @@index([clinicId])
   @@index([category])
@@ -425,4 +504,301 @@ model Transaction {
   @@index([date])
   @@index([status])
   @@map("transactions")
+}
+
+// ============================================================================
+// VET SECTION MODELS
+// ============================================================================
+
+/// Case status enum
+enum CaseStatus {
+  ACTIVE
+  CLOSED
+  FOLLOW_UP
+}
+
+/// VetCase model - represents a medical case for a pet
+model VetCase {
+  id                String      @id @default(cuid())
+  clinicId          String
+  petId             String
+  appointmentId     String?
+  vetId             String
+  caseNumber        String      @unique @db.VarChar(50) // e.g., CASE-001
+  medicalRecordNumber String?   @unique @db.VarChar(50) // e.g., MR-2026-001 (unique medical record ID)
+  status            CaseStatus  @default(ACTIVE)
+  chiefComplaint    String?     @db.Text
+  caseDate          DateTime    @default(now())
+  closedAt          DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  pet               Pet         @relation(fields: [petId], references: [id], onDelete: Cascade)
+  appointment       Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  vet               User        @relation(fields: [vetId], references: [id], onDelete: Restrict)
+  symptoms          SymptomRecord[]
+  imaging           ImagingRecord[]
+  procedures        ProcedureRecord[]
+  vaccinations      VaccinationRecord[]
+  diagnoses         CaseDiagnosis[]
+
+  @@index([clinicId])
+  @@index([petId])
+  @@index([vetId])
+  @@index([status])
+  @@index([caseNumber])
+  @@index([medicalRecordNumber])
+  @@map("vet_cases")
+}
+
+/// SymptomRecord model - stores symptoms and vitals
+model SymptomRecord {
+  id                String    @id @default(cuid())
+  vetCaseId         String
+  chiefComplaint    String?   @db.Text
+  symptomsObserved String?   @db.Text // JSON array of symptoms
+  clinicalNotes    String?   @db.Text
+  temperature       Float?    // Body temperature in Fahrenheit
+  heartRate         Int?      // Beats per minute
+  pulse             Int?      // Pulse rate in beats per minute
+  weight            Float?    // Weight in kg
+  appetiteStatus    String?   @db.VarChar(50) // Normal, Poor, Good, None
+  diagnosticPlan    String?   @db.Text
+  recordedAt        DateTime  @default(now())
+  recordedBy        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  vetCase           VetCase   @relation(fields: [vetCaseId], references: [id], onDelete: Cascade)
+
+  @@index([vetCaseId])
+  @@index([recordedAt])
+  @@map("symptom_records")
+}
+
+/// ImagingRecord model - stores imaging requests and results
+enum ImagingType {
+  XRAY
+  ULTRASOUND
+  MRI
+  CT_SCAN
+}
+
+enum ImagingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ImagingRecord {
+  id                String        @id @default(cuid())
+  vetCaseId         String
+  imagingType       ImagingType
+  bodyPart          String?       @db.VarChar(255) // Name of the body part being imaged (e.g., "Left Front Leg", "Abdomen")
+  instructions      String?       @db.Text
+  findings          String?       @db.Text
+  status            ImagingStatus @default(PENDING)
+  reportUrl         String?       @db.Text
+  imagingDate       DateTime      @default(now()) // Date of imaging
+  scheduledDate     DateTime?
+  completedDate     DateTime?
+  cost              Float?
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt          DateTime?
+
+  // Relations
+  vetCase           VetCase       @relation(fields: [vetCaseId], references: [id], onDelete: Cascade)
+
+  @@index([vetCaseId])
+  @@index([imagingType])
+  @@index([status])
+  @@map("imaging_records")
+}
+
+/// ProcedureRecord model - stores procedures performed
+model ProcedureRecord {
+  id                String    @id @default(cuid())
+  vetCaseId         String
+  parentProcedureId String?
+  procedureName     String    @db.VarChar(255)
+  description       String?   @db.Text
+  cost              Float?
+  procedureDate     DateTime  @default(now())
+  notes             String?   @db.Text
+  performedBy       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  vetCase           VetCase   @relation(fields: [vetCaseId], references: [id], onDelete: Cascade)
+  parentProcedure   ProcedureRecord?  @relation("ProcedureFollowUps", fields: [parentProcedureId], references: [id], onDelete: SetNull)
+  followUpProcedures ProcedureRecord[] @relation("ProcedureFollowUps")
+
+  @@index([vetCaseId])
+  @@index([parentProcedureId])
+  @@index([procedureDate])
+  @@map("procedure_records")
+}
+
+/// VaccinationRecord model - stores vaccination history
+model VaccinationRecord {
+  id                String    @id @default(cuid())
+  vetCaseId         String
+  vaccineName       String    @db.VarChar(255)
+  dueDate           DateTime?
+  administeredDate  DateTime?
+  nextDueDate       DateTime?
+  dose              String?   @db.VarChar(100)
+  batchNumber       String?   @db.VarChar(100)
+  administeredBy    String?
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  vetCase           VetCase   @relation(fields: [vetCaseId], references: [id], onDelete: Cascade)
+
+  @@index([vetCaseId])
+  @@index([vaccineName])
+  @@map("vaccination_records")
+}
+
+/// CaseDiagnosis model - stores diagnosis and prescriptions
+model CaseDiagnosis {
+  id                String    @id @default(cuid())
+  vetCaseId         String
+  diagnosis         String    @db.Text
+  treatmentPlan     String?   @db.Text
+  dischargeNote     String?   @db.Text
+  physicianNote     String?   @db.Text
+  notes             String?   @db.Text
+  followUpDate      DateTime?
+  followUpTimeSlot  String?   @db.VarChar(10)
+  remarks           String?   @db.Text
+  diagnosedAt       DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  vetCase           VetCase   @relation(fields: [vetCaseId], references: [id], onDelete: Cascade)
+  medications       Prescription[]
+
+  @@index([vetCaseId])
+  @@map("case_diagnoses")
+}
+
+/// Prescription model - stores medications prescribed
+model Prescription {
+  id                String    @id @default(cuid())
+  caseDiagnosisId   String
+  medicineName      String    @db.VarChar(255)
+  dosage            String    @db.VarChar(100) // e.g., "10mg"
+  frequency         String    @db.VarChar(100) // e.g., "Twice daily"
+  duration          String    @db.VarChar(100) // e.g., "7 days"
+  notes             String?   @db.Text
+  cost              Float?
+  prescribedAt      DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  caseDiagnosis     CaseDiagnosis @relation(fields: [caseDiagnosisId], references: [id], onDelete: Cascade)
+  pharmacyDeliveries PharmacyDelivery[]
+
+  @@index([caseDiagnosisId])
+  @@map("prescriptions")
+}
+
+// ============================================================================
+// PHARMACY & STORE DELIVERY/DISPENSING MODELS
+// ============================================================================
+
+/// DispensingType enum - distinguishes between retail sale and clinic use
+enum DispensingType {
+  SALE              // Customer purchase from store
+  CLINIC_USE        // Clinic internal use for treatment
+}
+
+/// PharmacyDelivery model - tracks medicines given to customers/pets
+model PharmacyDelivery {
+  id                String    @id @default(cuid())
+  clinicId          String
+  prescriptionId    String?   // Optional link to prescription
+  supplyId          String?   // Optional link to supply/medicine
+  pharmacyInventoryId String? // Optional link to pharmacy inventory stock
+  medicineName      String    @db.VarChar(255)
+  quantity          Int
+  dosage            String?   @db.VarChar(100) // dosage info for reference
+  petId             String?   // If given directly to pet (clinic use)
+  customerId        String?   // If given to customer (customer purchase)
+  deliveredBy       String    // User ID of staff who delivered
+  deliveryDate      DateTime  @default(now())
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  prescription      Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  supply            Supply?   @relation(fields: [supplyId], references: [id], onDelete: SetNull)
+  pharmacyInventory PharmacyInventory? @relation(fields: [pharmacyInventoryId], references: [id], onDelete: SetNull)
+  pet               Pet?      @relation(fields: [petId], references: [id], onDelete: SetNull)
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  staff             User      @relation("PharmacyDeliveries", fields: [deliveredBy], references: [id], onDelete: Restrict)
+
+  @@index([clinicId])
+  @@index([prescriptionId])
+  @@index([supplyId])
+  @@index([pharmacyInventoryId])
+  @@index([petId])
+  @@index([customerId])
+  @@index([deliveredBy])
+  @@index([deliveryDate])
+  @@map("pharmacy_deliveries")
+}
+
+/// StoreDispensing model - tracks items sold or used internally
+model StoreDispensing {
+  id                String      @id @default(cuid())
+  clinicId          String
+  storeItemId       String
+  quantity          Int
+  dispensingType    DispensingType
+  petId             String?     // If clinic use or given to specific pet
+  customerId        String?     // If sale to customer
+  dispensedBy       String      // User ID of staff who dispensed
+  dispensingDate    DateTime    @default(now())
+  notes             String?     @db.Text
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  clinic            Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  storeItem         StoreItem   @relation(fields: [storeItemId], references: [id], onDelete: Restrict)
+  pet               Pet?        @relation(fields: [petId], references: [id], onDelete: SetNull)
+  customer          Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  staff             User        @relation("StoreDispensingRecords", fields: [dispensedBy], references: [id], onDelete: Restrict)
+
+  @@index([clinicId])
+  @@index([storeItemId])
+  @@index([petId])
+  @@index([customerId])
+  @@index([dispensedBy])
+  @@index([dispensingType])
+  @@index([dispensingDate])
+  @@map("store_dispensing")
 }
