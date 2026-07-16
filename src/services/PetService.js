@@ -4,6 +4,50 @@ const { HTTP_STATUS, PAGINATION } = require('../utils/constants');
 const logger = require('../utils/logger');
 const IdGenerator = require('../utils/idGenerator');
 
+const splitContactName = (fullName = '') => {
+    const cleaned = fullName.trim().replace(/\s+/g, ' ');
+
+    if (!cleaned) {
+        return { firstName: 'NGO', lastName: 'Contact' };
+    }
+
+    const parts = cleaned.split(' ');
+
+    if (parts.length === 1) {
+        return { firstName: parts[0], lastName: 'Contact' };
+    }
+
+    return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' '),
+    };
+};
+
+const buildNgoMedicalNotes = (data = {}) => {
+    const sections = [
+        data.intakeType ? `Intake Type: ${data.intakeType}` : null,
+        data.intakeDate ? `Intake Date: ${data.intakeDate}` : null,
+        data.formNumber ? `Form Number: ${data.formNumber}` : null,
+        data.rescueLocationCondition
+            ? `Location / Condition: ${data.rescueLocationCondition}`
+            : null,
+        data.neutered ? `Neutered: ${data.neutered}` : null,
+        data.vaccinationStatus
+            ? `Vaccination Status: ${data.vaccinationStatus}`
+            : null,
+        data.medicalHistoryVetDetails
+            ? `Medical History & Vet Details: ${data.medicalHistoryVetDetails}`
+            : null,
+    ].filter(Boolean);
+
+    const combinedNotes = [
+        sections.length ? sections.join('\n') : null,
+        data.medicalNotes || null,
+    ].filter(Boolean);
+
+    return combinedNotes.length ? combinedNotes.join('\n\n') : null;
+};
+
 class PetService {
     /**
      * Get all pets for a clinic with customer details
@@ -136,57 +180,110 @@ class PetService {
      */
     static async createPet(clinicId, data) {
         try {
-            // Verify customer belongs to clinic (support both id and customerId)
-            const customer = await prisma.customer.findFirst({
-                where: {
-                    OR: [
-                        { id: data.customerId },
-                        { customerId: data.customerId },
-                    ],
-                },
-            });
-
-            if (!customer || customer.clinicId !== clinicId) {
-                throw new AppError(
-                    'Customer not found',
-                    HTTP_STATUS.NOT_FOUND,
-                    'CUSTOMER_NOT_FOUND'
-                );
-            }
-
-            // Generate petId
             const petId = await IdGenerator.generatePetId();
+            const enrichedMedicalNotes = buildNgoMedicalNotes(data);
 
-            const pet = await prisma.pet.create({
-                data: {
-                    clinicId,
-                    customerId: customer.id,
-                    petId,
-                    name: data.name,
-                    species: data.species,
-                    breed: data.breed,
-                    age: data.age,
-                    gender: data.gender,
-                    weight: data.weight,
-                    colour: data.colour || data.color, // Support both colour and color
-                    medicalNotes: data.medicalNotes,
-                    microchipId: data.microchipId,
-                    dateOfBirth: data.dateOfBirth,
-                },
-                include: {
-                    owner: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            customerId: true,
-                            code: true,
+            if (data.customerId) {
+                const customer = await prisma.customer.findFirst({
+                    where: {
+                        OR: [
+                            { id: data.customerId },
+                            { customerId: data.customerId },
+                        ],
+                    },
+                });
+
+                if (!customer || customer.clinicId !== clinicId) {
+                    throw new AppError(
+                        'Customer not found',
+                        HTTP_STATUS.NOT_FOUND,
+                        'CUSTOMER_NOT_FOUND'
+                    );
+                }
+
+                const pet = await prisma.pet.create({
+                    data: {
+                        clinicId,
+                        customerId: customer.id,
+                        petId,
+                        name: data.name,
+                        species: data.species,
+                        breed: data.breed,
+                        age: data.age,
+                        gender: data.gender,
+                        weight: data.weight,
+                        colour: data.colour || data.color,
+                        medicalNotes: enrichedMedicalNotes,
+                        microchipId: data.microchipId,
+                        dateOfBirth: data.dateOfBirth,
+                    },
+                    include: {
+                        owner: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                customerId: true,
+                                code: true,
+                            },
                         },
                     },
-                },
+                });
+
+                logger.info(`Pet created: ${pet.id} (${pet.petId}) for customer ${customer.customerId}`);
+                return pet;
+            }
+
+            const contactName = data.rescuerName || data.contactName || 'NGO Contact';
+            const { firstName, lastName } = splitContactName(contactName);
+            const generatedCustomerId = await IdGenerator.generateCustomerId();
+            const generatedCustomerCode = IdGenerator.generateCustomerCode(contactName, data.rescuerPhone);
+
+            const pet = await prisma.$transaction(async (tx) => {
+                const contact = await tx.customer.create({
+                    data: {
+                        clinicId,
+                        customerId: generatedCustomerId,
+                        code: generatedCustomerCode,
+                        firstName,
+                        lastName,
+                        email: data.rescuerEmail || null,
+                        phoneNumber: data.rescuerPhone || null,
+                        address: data.rescuerAddress || null,
+                    },
+                });
+
+                return tx.pet.create({
+                    data: {
+                        clinicId,
+                        customerId: contact.id,
+                        petId,
+                        name: data.name,
+                        species: data.species,
+                        breed: data.breed,
+                        age: data.age,
+                        gender: data.gender,
+                        weight: data.weight,
+                        colour: data.colour || data.color,
+                        medicalNotes: enrichedMedicalNotes,
+                        microchipId: data.microchipId,
+                        dateOfBirth: data.dateOfBirth,
+                    },
+                    include: {
+                        owner: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                customerId: true,
+                                code: true,
+                            },
+                        },
+                    },
+                });
             });
 
-            logger.info(`Pet created: ${pet.id} (${pet.petId}) for customer ${customer.customerId}`);
+            logger.info(`Pet created: ${pet.id} (${pet.petId}) with NGO contact ${generatedCustomerId}`);
 
             return pet;
         } catch (error) {

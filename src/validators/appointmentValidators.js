@@ -7,9 +7,16 @@ const { validators } = require('./index');
 const petValidators = {
   create: [
     param('clinicId').notEmpty().withMessage('Clinic ID is required'),
-    body('customerId')
-      .notEmpty()
-      .withMessage('Customer ID is required'),
+    body().custom((value, { req }) => {
+      const hasCustomerId = Boolean(req.body.customerId);
+      const hasContactName = Boolean(req.body.rescuerName || req.body.contactName);
+
+      if (!hasCustomerId && !hasContactName) {
+        throw new Error('Customer ID or rescuer/contact name is required');
+      }
+
+      return true;
+    }),
     body('name')
       .trim()
       .notEmpty()
@@ -49,6 +56,43 @@ const petValidators = {
       .optional()
       .isISO8601()
       .withMessage('Invalid date format'),
+    body('formNumber')
+      .optional()
+      .trim(),
+    body('intakeType')
+      .optional()
+      .isIn(['RESCUE', 'SURRENDER', 'TREATMENT'])
+      .withMessage('Invalid intake type'),
+    body('rescuerName')
+      .optional()
+      .trim(),
+    body('contactName')
+      .optional()
+      .trim(),
+    body('rescuerPhone')
+      .optional()
+      .trim(),
+    body('rescuerEmail')
+      .optional()
+      .isEmail()
+      .withMessage('Invalid rescuer email format'),
+    body('rescuerAddress')
+      .optional()
+      .trim(),
+    body('rescueLocationCondition')
+      .optional()
+      .trim(),
+    body('neutered')
+      .optional()
+      .isIn(['Yes', 'No', 'Unknown'])
+      .withMessage('Invalid neutered value'),
+    body('vaccinationStatus')
+      .optional()
+      .isIn(['Yes', 'No', 'Unknown'])
+      .withMessage('Invalid vaccination status'),
+    body('medicalHistoryVetDetails')
+      .optional()
+      .trim(),
   ],
 
   update: [

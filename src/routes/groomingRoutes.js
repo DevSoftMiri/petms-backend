@@ -21,6 +21,24 @@ router.get(
     GroomingController.getAll
 );
 
+// GET /api/v1/clinics/:clinicId/grooming/external-groomers
+router.get(
+    '/external-groomers',
+    authMiddleware,
+    clinicAccessMiddleware,
+    permissionMiddleware('VIEW_GROOMING'),
+    GroomingController.getExternalGroomers
+);
+
+// POST /api/v1/clinics/:clinicId/grooming/external-groomers
+router.post(
+    '/external-groomers',
+    authMiddleware,
+    clinicAccessMiddleware,
+    permissionMiddleware('MANAGE_GROOMING'),
+    GroomingController.createExternalGroomer
+);
+
 // GET /api/v1/clinics/:clinicId/grooming/:recordId
 router.get(
     '/:recordId',

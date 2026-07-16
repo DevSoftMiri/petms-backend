@@ -69,6 +69,7 @@ model Clinic {
   customers         Customer[]
   appointments      Appointment[]
   groomingRecords   GroomingRecord[]
+  externalGroomers  ExternalGroomer[]
   pharmacyRecords   PharmacyRecord[]
   pharmacyInventory PharmacyInventory[]
   events            Event[]
@@ -294,7 +295,8 @@ model GroomingRecord {
   id                String    @id @default(cuid())
   clinicId          String
   petId             String
-  groomerId         String
+  groomerId         String?
+  externalGroomerId String?
   services          String    @db.Text // JSON array of services
   notes             String?   @db.Text
   cost              Float?
@@ -306,13 +308,38 @@ model GroomingRecord {
   // Relations
   clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
-  groomer           User      @relation(fields: [groomerId], references: [id], onDelete: Restrict)
+  groomer           User?     @relation(fields: [groomerId], references: [id], onDelete: Restrict)
+  externalGroomer   ExternalGroomer? @relation(fields: [externalGroomerId], references: [id], onDelete: SetNull)
 
   @@index([clinicId])
   @@index([petId])
   @@index([groomerId])
+  @@index([externalGroomerId])
   @@index([groomingDate])
   @@map("grooming_records")
+}
+
+model ExternalGroomer {
+  id                String    @id @default(cuid())
+  clinicId          String
+  name              String    @db.VarChar(255)
+  phoneNumber       String?   @db.VarChar(20)
+  email             String?   @db.VarChar(255)
+  location          String?   @db.VarChar(255)
+  address           String?   @db.Text
+  specialization    String?   @db.VarChar(255)
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  groomingRecords   GroomingRecord[]
+
+  @@index([clinicId])
+  @@index([name])
+  @@index([phoneNumber])
+  @@map("external_groomers")
 }
 
 /// PharmacyRecord model - represents pharmacy/medication records

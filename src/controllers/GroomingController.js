@@ -6,6 +6,28 @@ const { asyncHandler } = require('../utils/errors');
 const logger = require('../utils/logger');
 
 class GroomingController {
+    static getExternalGroomers = asyncHandler(async (req, res) => {
+        const groomers = await GroomingService.getExternalGroomers(req.params.clinicId);
+
+        res.status(HTTP_STATUS.OK).json(
+            apiResponse.success({
+                data: groomers,
+                message: 'External groomers retrieved successfully',
+            })
+        );
+    });
+
+    static createExternalGroomer = asyncHandler(async (req, res) => {
+        const groomer = await GroomingService.createExternalGroomer(req.params.clinicId, req.body);
+
+        res.status(HTTP_STATUS.CREATED).json(
+            apiResponse.success({
+                data: groomer,
+                message: 'External groomer created successfully',
+            })
+        );
+    });
+
     /**
      * GET /api/v1/clinics/:clinicId/grooming
      * Get all grooming records for a clinic

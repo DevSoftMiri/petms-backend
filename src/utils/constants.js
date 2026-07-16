@@ -41,6 +41,7 @@ const AVAILABLE_PAGE_ACCESS = [
   'laboratory',
   'pharmacy',
   'grooming',
+  'food',
   'store',
   'supplies',
   'finance',
@@ -148,8 +149,8 @@ const ROLE_ALLOWED_PAGES = {
   VET: ['dashboard', 'vet', 'customers', 'pets', 'appointments', 'laboratory', 'pharmacy', 'settings'],
   GROOMER: ['dashboard', 'customers', 'pets', 'appointments', 'grooming', 'settings'],
   RECEPTIONIST: ['dashboard', 'customers', 'pets', 'appointments', 'settings'],
-  PHARMACIST: ['dashboard', 'customers', 'pets', 'pharmacy', 'store', 'supplies', 'settings'],
-  STAFF: ['dashboard', 'customers', 'pets', 'appointments', 'store', 'supplies', 'settings'],
+  PHARMACIST: ['dashboard', 'customers', 'pets', 'pharmacy', 'food', 'store', 'supplies', 'settings'],
+  STAFF: ['dashboard', 'customers', 'pets', 'appointments', 'food', 'store', 'supplies', 'settings'],
   USER: ['dashboard'],
 };
 
