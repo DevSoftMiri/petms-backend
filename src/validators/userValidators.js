@@ -1,5 +1,6 @@
 const { body, param } = require('express-validator');
 const { validators } = require('./index');
+const { AVAILABLE_PAGE_ACCESS } = require('../utils/constants');
 
 /**
  * User Validators
@@ -30,6 +31,14 @@ const userValidators = {
       .withMessage('Role is required')
       .isIn(['SUPERADMIN', 'ADMIN', 'VET', 'GROOMER', 'RECEPTIONIST', 'PHARMACIST', 'STAFF', 'USER'])
       .withMessage('Invalid role'),
+    body('allowedPages')
+      .optional()
+      .isArray()
+      .withMessage('Allowed pages must be an array'),
+    body('allowedPages.*')
+      .optional()
+      .isIn(AVAILABLE_PAGE_ACCESS)
+      .withMessage('Invalid page access value'),
     validators.phoneNumber(),
   ],
 
@@ -68,6 +77,14 @@ const userValidators = {
       .optional()
       .isIn(['SUPERADMIN', 'ADMIN', 'VET', 'GROOMER', 'RECEPTIONIST', 'PHARMACIST', 'STAFF', 'USER'])
       .withMessage('Invalid role'),
+    body('allowedPages')
+      .optional()
+      .isArray()
+      .withMessage('Allowed pages must be an array'),
+    body('allowedPages.*')
+      .optional()
+      .isIn(AVAILABLE_PAGE_ACCESS)
+      .withMessage('Invalid page access value'),
     body('isActive')
       .optional()
       .isBoolean()

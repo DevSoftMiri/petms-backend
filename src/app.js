@@ -24,6 +24,7 @@ const storeRoutes = require('./routes/storeRoutes');
 const storeDispensingRoutes = require('./routes/storeDispensingRoutes');
 const suppliesRoutes = require('./routes/suppliesRoutes');
 const financeRoutes = require('./routes/financeRoutes');
+const superAdminFundsRoutes = require('./routes/superAdminFundsRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const vetRoutes = require('./routes/vetRoutes');
 const prescriptionRoutes = require('./routes/prescriptionRoutes');
@@ -100,6 +101,7 @@ app.use(`${apiV1}/clinics`, clinicRoutes);
 
 // User routes
 app.use(`${apiV1}/users`, userRoutes);
+app.use(`${apiV1}/superadmin/funds`, superAdminFundsRoutes);
 
 // Clinic-nested routes
 app.use(`${apiV1}/clinics/:clinicId/customers`, customerRoutes);

@@ -97,6 +97,7 @@ model User {
   lastName          String?   @db.VarChar(100)
   phoneNumber       String?   @db.VarChar(20)
   role              UserRole  @default(STAFF)
+  allowedPages      String[]  @default([])
   isActive          Boolean   @default(true)
   lastLogin         DateTime?
   refreshTokens     String[]  // Array of refresh tokens
@@ -504,6 +505,26 @@ model Transaction {
   @@index([date])
   @@index([status])
   @@map("transactions")
+}
+
+/// SuperAdminFund model - represents super admin fund and donation entries
+model SuperAdminFund {
+  id                String    @id @default(cuid())
+  donorName         String    @db.VarChar(255)
+  amount            Float
+  date              DateTime  @default(now())
+  paymentMode       String    @db.VarChar(100)
+  receivedBy        String    @db.VarChar(255)
+  proofUrl          String?   @db.Text
+  proofFileName     String?   @db.VarChar(255)
+  proofMimeType     String?   @db.VarChar(100)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  @@index([date])
+  @@index([createdAt])
+  @@map("superadmin_funds")
 }
 
 // ============================================================================

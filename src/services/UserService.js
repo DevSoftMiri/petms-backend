@@ -1,7 +1,7 @@
 const prisma = require('../lib/prisma');
 const { hashPassword } = require('../utils/auth');
 const { AppError } = require('../utils/errors');
-const { HTTP_STATUS, PAGINATION, ROLE_PERMISSIONS } = require('../utils/constants');
+const { HTTP_STATUS, PAGINATION, ROLE_PERMISSIONS, ROLE_ALLOWED_PAGES, AVAILABLE_PAGE_ACCESS } = require('../utils/constants');
 const logger = require('../utils/logger');
 
 class UserService {
@@ -32,6 +32,14 @@ class UserService {
         }
 
         return [...new Set(ids.filter(Boolean))];
+    }
+
+    static normalizeAllowedPages(allowedPages, role = 'STAFF') {
+        if (!Array.isArray(allowedPages)) {
+            return ROLE_ALLOWED_PAGES[role] || ROLE_ALLOWED_PAGES.STAFF || [];
+        }
+
+        return [...new Set(allowedPages.filter((page) => AVAILABLE_PAGE_ACCESS.includes(page)))];
     }
 
     /**
@@ -78,6 +86,7 @@ class UserService {
                         firstName: true,
                         lastName: true,
                         role: true,
+                        allowedPages: true,
                         isActive: true,
                         lastLogin: true,
                         createdAt: true,
@@ -131,6 +140,7 @@ class UserService {
                     lastName: true,
                     phoneNumber: true,
                     role: true,
+                    allowedPages: true,
                     isActive: true,
                     clinicId: true,
                     lastLogin: true,
@@ -206,6 +216,7 @@ class UserService {
                     lastName: data.lastName,
                     phoneNumber: data.phoneNumber,
                     role: data.role || 'STAFF',
+                    allowedPages: UserService.normalizeAllowedPages(data.allowedPages, data.role || 'STAFF'),
                     ...(clinicIds.length > 0 && {
                         clinicMemberships: {
                             create: clinicIds.map((id, index) => ({
@@ -242,6 +253,7 @@ class UserService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
+                allowedPages: user.allowedPages,
                 clinicId: user.clinicId,
                 clinicIds,
             };
@@ -284,6 +296,9 @@ class UserService {
                     email: data.email || user.email,
                     phoneNumber: data.phoneNumber || user.phoneNumber,
                     role: data.role || user.role,
+                    ...(data.allowedPages !== undefined
+                        ? { allowedPages: UserService.normalizeAllowedPages(data.allowedPages, data.role || user.role) }
+                        : {}),
                     isActive: data.isActive !== undefined ? data.isActive : user.isActive,
                     ...(data.clinicId !== undefined || data.clinicIds !== undefined
                         ? { clinicId: UserService.normalizeClinicIds(data)[0] || null }
@@ -296,6 +311,7 @@ class UserService {
                     firstName: true,
                     lastName: true,
                     role: true,
+                    allowedPages: true,
                     isActive: true,
                     clinicId: true,
                 },

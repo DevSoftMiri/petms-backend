@@ -32,6 +32,21 @@ const USER_ROLES = {
   STAFF: 'STAFF',
 };
 
+const AVAILABLE_PAGE_ACCESS = [
+  'dashboard',
+  'vet',
+  'customers',
+  'pets',
+  'appointments',
+  'laboratory',
+  'pharmacy',
+  'grooming',
+  'store',
+  'supplies',
+  'finance',
+  'settings',
+];
+
 // Default Permissions
 const DEFAULT_PERMISSIONS = [
   // Customer Permissions
@@ -127,6 +142,17 @@ const ROLE_PERMISSIONS = {
   ],
 };
 
+const ROLE_ALLOWED_PAGES = {
+  SUPERADMIN: AVAILABLE_PAGE_ACCESS,
+  ADMIN: AVAILABLE_PAGE_ACCESS,
+  VET: ['dashboard', 'vet', 'customers', 'pets', 'appointments', 'laboratory', 'pharmacy', 'settings'],
+  GROOMER: ['dashboard', 'customers', 'pets', 'appointments', 'grooming', 'settings'],
+  RECEPTIONIST: ['dashboard', 'customers', 'pets', 'appointments', 'settings'],
+  PHARMACIST: ['dashboard', 'customers', 'pets', 'pharmacy', 'store', 'supplies', 'settings'],
+  STAFF: ['dashboard', 'customers', 'pets', 'appointments', 'store', 'supplies', 'settings'],
+  USER: ['dashboard'],
+};
+
 // Appointment Status
 const APPOINTMENT_STATUS = {
   PENDING: 'PENDING',
@@ -152,8 +178,10 @@ const PAGINATION = {
 module.exports = {
   HTTP_STATUS,
   USER_ROLES,
+  AVAILABLE_PAGE_ACCESS,
   DEFAULT_PERMISSIONS,
   ROLE_PERMISSIONS,
+  ROLE_ALLOWED_PAGES,
   APPOINTMENT_STATUS,
   SUBSCRIPTION_PLANS,
   PAGINATION,

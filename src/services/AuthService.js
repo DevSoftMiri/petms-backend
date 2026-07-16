@@ -1,7 +1,7 @@
 const prisma = require('../lib/prisma');
 const { hashPassword, comparePassword, generateAccessToken, generateRefreshToken } = require('../utils/auth');
 const { AppError } = require('../utils/errors');
-const { HTTP_STATUS, ROLE_PERMISSIONS } = require('../utils/constants');
+const { HTTP_STATUS, ROLE_PERMISSIONS, ROLE_ALLOWED_PAGES } = require('../utils/constants');
 const logger = require('../utils/logger');
 
 class AuthService {
@@ -71,6 +71,7 @@ class AuthService {
                     lastName,
                     phoneNumber,
                     role,
+                    allowedPages: ROLE_ALLOWED_PAGES[role] || ROLE_ALLOWED_PAGES.STAFF || [],
                     clinicId: clinicId || null,
                     ...(clinicId && {
                         clinicMemberships: {
@@ -108,6 +109,7 @@ class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
+                allowedPages: user.allowedPages,
                 clinicId: user.clinicId,
             };
         } catch (error) {
@@ -197,9 +199,10 @@ class AuthService {
                     email: user.email,
                     firstName: user.firstName,
                     lastName: user.lastName,
-                    role: user.role,
-                    clinicId: payload.clinicId,
-                    clinics,
+                role: user.role,
+                allowedPages: user.allowedPages,
+                clinicId: payload.clinicId,
+                clinics,
                 },
                 accessToken,
                 refreshToken,
