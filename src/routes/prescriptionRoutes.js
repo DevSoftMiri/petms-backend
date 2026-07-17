@@ -16,7 +16,7 @@ router.get(
     '/',
     authMiddleware,
     clinicAccessMiddleware,
-    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN']),
+    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN', 'SUPERADMIN']),
     PrescriptionController.getAll
 );
 
@@ -26,7 +26,7 @@ router.get(
     '/active',
     authMiddleware,
     clinicAccessMiddleware,
-    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN']),
+    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN', 'SUPERADMIN']),
     PrescriptionController.getActive
 );
 
@@ -36,7 +36,7 @@ router.get(
     '/pet/:petId',
     authMiddleware,
     clinicAccessMiddleware,
-    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN']),
+    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN', 'SUPERADMIN']),
     PrescriptionController.getByPet
 );
 
@@ -46,7 +46,7 @@ router.get(
     '/vet/:vetId',
     authMiddleware,
     clinicAccessMiddleware,
-    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN']),
+    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN', 'SUPERADMIN']),
     PrescriptionController.getByVet
 );
 
@@ -56,7 +56,7 @@ router.get(
     '/:prescriptionId',
     authMiddleware,
     clinicAccessMiddleware,
-    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN']),
+    roleMiddleware(['PHARMACIST', 'VET', 'RECEPTIONIST', 'ADMIN', 'SUPERADMIN']),
     PrescriptionController.getById
 );
 

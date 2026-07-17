@@ -7,11 +7,11 @@ class StoreDispensingService {
      */
     static async createDispensing(clinicId, dispensingData) {
         try {
-            const { storeItemId, quantity, dispensingType, petId, customerId, dispensedBy, notes } = dispensingData;
+            const { storeItemId, sourceSupplyId, quantity, dispensingType, petId, customerId, dispensedBy, notes } = dispensingData;
 
             // Validate required fields
-            if (!storeItemId || !quantity || !dispensingType || !dispensedBy) {
-                throw new Error('storeItemId, quantity, dispensingType, and dispensedBy are required');
+            if ((!storeItemId && !sourceSupplyId) || !quantity || !dispensingType || !dispensedBy) {
+                throw new Error('storeItemId or sourceSupplyId, quantity, dispensingType, and dispensedBy are required');
             }
 
             if (!['SALE', 'CLINIC_USE'].includes(dispensingType)) {
@@ -29,17 +29,58 @@ class StoreDispensingService {
                 throw new Error('Clinic not found');
             }
 
-            // Verify store item exists and belongs to clinic
-            const storeItem = await prisma.storeItem.findFirst({
-                where: { id: storeItemId, clinicId },
-            });
+            // Resolve inventory source: direct store item or a food/supply item mirrored into store history
+            let storeItem = null;
+            let sourceSupply = null;
+
+            if (storeItemId) {
+                storeItem = await prisma.storeItem.findFirst({
+                    where: { id: storeItemId, clinicId },
+                });
+            }
+
+            if (!storeItem && sourceSupplyId) {
+                sourceSupply = await prisma.supply.findFirst({
+                    where: { id: sourceSupplyId, clinicId, deletedAt: null },
+                });
+
+                if (!sourceSupply) {
+                    throw new Error('Supply item not found in this clinic');
+                }
+
+                storeItem = await prisma.storeItem.findFirst({
+                    where: {
+                        clinicId,
+                        name: sourceSupply.name,
+                        category: sourceSupply.category,
+                        deletedAt: null,
+                    },
+                });
+
+                if (!storeItem) {
+                    storeItem = await prisma.storeItem.create({
+                        data: {
+                            clinicId,
+                            name: sourceSupply.name,
+                            category: sourceSupply.category,
+                            description: sourceSupply.description,
+                            price: sourceSupply.cost || 0,
+                            quantity: sourceSupply.quantity || 0,
+                            supplier: sourceSupply.supplier,
+                            expiryDate: sourceSupply.expiryDate,
+                        },
+                    });
+                }
+            }
+
             if (!storeItem) {
                 throw new Error('Store item not found in this clinic');
             }
 
             // Check inventory availability
-            if (storeItem.quantity < quantity) {
-                throw new Error(`Insufficient inventory. Available: ${storeItem.quantity}, Requested: ${quantity}`);
+            const availableQuantity = sourceSupply ? sourceSupply.quantity : storeItem.quantity;
+            if (availableQuantity < quantity) {
+                throw new Error(`Insufficient inventory. Available: ${availableQuantity}, Requested: ${quantity}`);
             }
 
             // Verify staff member exists and belongs to clinic
@@ -70,17 +111,37 @@ class StoreDispensingService {
                 }
             }
 
-            // Deduct quantity from store inventory
-            await prisma.storeItem.update({
-                where: { id: storeItemId },
-                data: { quantity: { decrement: quantity } },
-            });
+            if (sourceSupply) {
+                const nextQuantity = Math.max(0, Number(sourceSupply.quantity || 0) - Number(quantity));
+
+                await prisma.supply.update({
+                    where: { id: sourceSupply.id },
+                    data: { quantity: nextQuantity },
+                });
+
+                await prisma.storeItem.update({
+                    where: { id: storeItem.id },
+                    data: {
+                        description: sourceSupply.description,
+                        price: sourceSupply.cost || 0,
+                        quantity: nextQuantity,
+                        supplier: sourceSupply.supplier,
+                        expiryDate: sourceSupply.expiryDate,
+                    },
+                });
+            } else {
+                // Deduct quantity from store inventory
+                await prisma.storeItem.update({
+                    where: { id: storeItem.id },
+                    data: { quantity: { decrement: quantity } },
+                });
+            }
 
             // Create store dispensing record
             const dispensing = await prisma.storeDispensing.create({
                 data: {
                     clinicId,
-                    storeItemId,
+                    storeItemId: storeItem.id,
                     quantity,
                     dispensingType,
                     petId: petId || null,

@@ -1,6 +1,35 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+const personName = (person) => {
+    if (!person) return null;
+    const fullName = `${person.firstName || ""} ${person.lastName || ""}`.trim();
+    return fullName || person.username || null;
+};
+
+const formatVeterinarianName = (test) => {
+    if (test?.veterinarian && test.veterinarian.trim()) {
+        return test.veterinarian.trim();
+    }
+
+    const assignedVetName = personName(test?.pet?.assignedVet);
+    if (assignedVetName) return assignedVetName;
+
+    const latestCaseVetName = personName(test?.pet?.vetCases?.[0]?.vet);
+    return latestCaseVetName;
+};
+
+const normalizeLabTest = (test) => {
+    const latestVetCase = test?.pet?.vetCases?.[0];
+
+    return {
+        ...test,
+        _id: test.id,
+        customerCode: latestVetCase?.medicalRecordNumber || null,
+        veterinarian: formatVeterinarianName(test),
+    };
+};
+
 class LabTestService {
     async getLabTestsByClinic(clinicId) {
         try {
@@ -9,13 +38,31 @@ class LabTestService {
                 include: {
                     pet: {
                         include: {
-                            owner: {
+                            assignedVet: {
                                 select: {
                                     id: true,
                                     firstName: true,
                                     lastName: true,
-                                    code: true,
-                                    customerId: true,
+                                    username: true,
+                                },
+                            },
+                            vetCases: {
+                                where: { deletedAt: null },
+                                orderBy: [
+                                    { caseDate: "desc" },
+                                    { createdAt: "desc" },
+                                ],
+                                take: 1,
+                                select: {
+                                    medicalRecordNumber: true,
+                                    vet: {
+                                        select: {
+                                            id: true,
+                                            firstName: true,
+                                            lastName: true,
+                                            username: true,
+                                        },
+                                    },
                                 },
                             },
                         },
@@ -24,18 +71,7 @@ class LabTestService {
                 orderBy: { date: "desc" },
             });
 
-            // Transform to include customerCode at top level and map id to _id
-            return tests.map((test) => {
-                const owner = test.pet?.owner;
-                return {
-                    ...test,
-                    _id: test.id,
-                    customerCode: owner?.code || owner?.customerId || null,
-                    customerName: owner
-                        ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
-                        : null,
-                };
-            });
+            return tests.map(normalizeLabTest);
         } catch (error) {
             console.error("Error in getLabTestsByClinic:", error);
             throw error;
@@ -67,13 +103,31 @@ class LabTestService {
                 include: {
                     pet: {
                         include: {
-                            owner: {
+                            assignedVet: {
                                 select: {
                                     id: true,
                                     firstName: true,
                                     lastName: true,
-                                    code: true,
-                                    customerId: true,
+                                    username: true,
+                                },
+                            },
+                            vetCases: {
+                                where: { deletedAt: null },
+                                orderBy: [
+                                    { caseDate: "desc" },
+                                    { createdAt: "desc" },
+                                ],
+                                take: 1,
+                                select: {
+                                    medicalRecordNumber: true,
+                                    vet: {
+                                        select: {
+                                            id: true,
+                                            firstName: true,
+                                            lastName: true,
+                                            username: true,
+                                        },
+                                    },
                                 },
                             },
                         },
@@ -82,16 +136,7 @@ class LabTestService {
             });
 
             console.log('[LabTestService] Created lab test with ID:', test.id, 'reportUrl:', test.reportUrl);
-
-            const owner = test.pet?.owner;
-            return {
-                ...test,
-                _id: test.id,
-                customerCode: owner?.code || owner?.customerId || null,
-                customerName: owner
-                    ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
-                    : null,
-            };
+            return normalizeLabTest(test);
         } catch (error) {
             console.error("Error in createLabTest:", error);
             throw error;
@@ -124,13 +169,31 @@ class LabTestService {
                 include: {
                     pet: {
                         include: {
-                            owner: {
+                            assignedVet: {
                                 select: {
                                     id: true,
                                     firstName: true,
                                     lastName: true,
-                                    code: true,
-                                    customerId: true,
+                                    username: true,
+                                },
+                            },
+                            vetCases: {
+                                where: { deletedAt: null },
+                                orderBy: [
+                                    { caseDate: "desc" },
+                                    { createdAt: "desc" },
+                                ],
+                                take: 1,
+                                select: {
+                                    medicalRecordNumber: true,
+                                    vet: {
+                                        select: {
+                                            id: true,
+                                            firstName: true,
+                                            lastName: true,
+                                            username: true,
+                                        },
+                                    },
                                 },
                             },
                         },
@@ -139,16 +202,7 @@ class LabTestService {
             });
 
             console.log('[LabTestService] Updated lab test, returning:', { id: test?.id, reportUrl: test?.reportUrl });
-
-            const owner = test?.pet?.owner;
-            return {
-                ...test,
-                _id: test?.id,
-                customerCode: owner?.code || owner?.customerId || null,
-                customerName: owner
-                    ? `${owner.firstName || ""} ${owner.lastName || ""}`.trim()
-                    : null,
-            };
+            return test ? normalizeLabTest(test) : test;
         } catch (error) {
             console.error("Error in updateLabTest:", error);
             throw error;

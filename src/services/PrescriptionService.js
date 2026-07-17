@@ -362,9 +362,14 @@ class PrescriptionService {
             // Filter: only show prescriptions with no deliveries or partial deliveries
             const activePrescriptions = prescriptions.map((p) => ({
                 ...p,
+                pet: p.caseDiagnosis.vetCase.pet,
+                vet: p.caseDiagnosis.vetCase.vet,
+                clinic: p.caseDiagnosis.vetCase.clinic,
+                diagnosis: p.caseDiagnosis.diagnosis,
+                diagnosisNotes: p.caseDiagnosis.notes,
                 totalDelivered: p.pharmacyDeliveries.reduce((sum, d) => sum + d.quantity, 0),
-                isActive: p.pharmacyDeliveries.length === 0,
-            }));
+                isActive: p.pharmacyDeliveries.reduce((sum, d) => sum + d.quantity, 0) < 1,
+            })).filter((p) => p.totalDelivered < 1);
 
             return {
                 prescriptions: activePrescriptions,
